@@ -712,7 +712,7 @@ def tweak_price(A_gamma: uint256[2],_xp: uint256[N_COINS], p_i: uint256, new_D: 
 
 @internal
 def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-              use_eth: bool, receiver: address, cb: Bytes[4] = b"\x00\x00\x00\x00") -> uint256:
+              use_eth: bool, receiver: address, callbacker: address, callback_sig: Bytes[4]) -> uint256:
     assert not self.is_killed  # dev: the pool is killed
     assert i != j  # dev: coin index out of range
     assert i < N_COINS  # dev: coin index out of range
@@ -729,7 +729,7 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
         assert mvalue == dx  # dev: incorrect eth amount
     else:
         assert mvalue == 0  # dev: nonzero eth amount
-        if cb == b"\x00\x00\x00\x00":
+        if callback_sig == b"\x00\x00\x00\x00":
             response: Bytes[32] = raw_call(
                 _coins[i],
                 concat(
@@ -745,7 +745,15 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
         else:
             c: address = _coins[i]
             b: uint256 = ERC20(c).balanceOf(self)
-            raw_call(sender, concat(cb, convert(c, bytes32), convert(dx, bytes32)))
+            raw_call(callbacker,
+                     concat(
+                        callback_sig,
+                        convert(sender, bytes32),
+                        convert(receiver, bytes32),
+                        convert(c, bytes32),
+                        convert(dx, bytes32)
+                     )
+            )
             assert ERC20(c).balanceOf(self) - b == dx  # dev: callback didn't give us coins
         if i == ETH_INDEX:
             WETH(_coins[i]).withdraw(dx)
@@ -839,18 +847,27 @@ def exchange(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
     """
     Exchange using WETH by default
     """
-    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, use_eth, receiver)
+    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, use_eth, receiver, ZERO_ADDRESS, b'\x00\x00\x00\x00')
 
 
 @payable
 @external
 @nonreentrant('lock')
 def exchange_underlying(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-                        receiver: address =msg.sender) -> uint256:
+                        receiver: address = msg.sender) -> uint256:
     """
     Exchange using ETH
     """
-    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, True, receiver)
+    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, True, receiver, ZERO_ADDRESS, b'\x00\x00\x00\x00')
+
+
+@payable
+@external
+@nonreentrant('lock')
+def exchange_extended(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
+                      use_eth: bool, sender: address, receiver: address, cb: Bytes[4]) -> uint256:
+    assert cb != b'\x00\x00\x00\x00'  # dev: No callback specified
+    return self._exchange(sender, msg.value, i, j, dx, min_dy, use_eth, receiver, msg.sender, cb)
 
 
 @external
