@@ -3,9 +3,6 @@
 # Pool for two crypto assets
 
 # Universal implementation which can use both ETH and ERC20s
-#
-# XXX todo:
-# - specify callback to have one transfer instead of two
 
 interface Factory:
     def admin() -> address: view
@@ -715,7 +712,7 @@ def tweak_price(A_gamma: uint256[2],_xp: uint256[N_COINS], p_i: uint256, new_D: 
 
 @internal
 def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-              use_eth: bool, receiver: address) -> uint256:
+              use_eth: bool, receiver: address, cb: Bytes[4] = b"\x00\x00\x00\x00") -> uint256:
     assert not self.is_killed  # dev: the pool is killed
     assert i != j  # dev: coin index out of range
     assert i < N_COINS  # dev: coin index out of range
@@ -732,18 +729,23 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
         assert mvalue == dx  # dev: incorrect eth amount
     else:
         assert mvalue == 0  # dev: nonzero eth amount
-        response: Bytes[32] = raw_call(
-            _coins[i],
-            concat(
-                method_id("transferFrom(address,address,uint256)"),
-                convert(sender, bytes32),
-                convert(self, bytes32),
-                convert(dx, bytes32),
-            ),
-            max_outsize=32,
-        )
-        if len(response) > 0:
-            assert convert(response, bool)  # dev: failed transfer
+        if cb == b"\x00\x00\x00\x00":
+            response: Bytes[32] = raw_call(
+                _coins[i],
+                concat(
+                    method_id("transferFrom(address,address,uint256)"),
+                    convert(sender, bytes32),
+                    convert(self, bytes32),
+                    convert(dx, bytes32),
+                ),
+                max_outsize=32,
+            )
+            if len(response) > 0:
+                assert convert(response, bool)  # dev: failed transfer
+        else:
+            b: uint256 = ERC20(_coins[i]).balanceOf(self)
+            raw_call(sender, concat(cb, convert(dx, bytes32)))
+            assert ERC20(_coins[i]).balanceOf(self) - b == dx  # dev: callback didn't give us coins
         if i == ETH_INDEX:
             WETH(_coins[i]).withdraw(dx)
 
