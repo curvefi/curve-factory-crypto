@@ -743,9 +743,10 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
             if len(response) > 0:
                 assert convert(response, bool)  # dev: failed transfer
         else:
-            b: uint256 = ERC20(_coins[i]).balanceOf(self)
-            raw_call(sender, concat(cb, convert(dx, bytes32)))
-            assert ERC20(_coins[i]).balanceOf(self) - b == dx  # dev: callback didn't give us coins
+            c: address = _coins[i]
+            b: uint256 = ERC20(c).balanceOf(self)
+            raw_call(sender, concat(cb, convert(c, bytes32), convert(dx, bytes32)))
+            assert ERC20(c).balanceOf(self) - b == dx  # dev: callback didn't give us coins
         if i == ETH_INDEX:
             WETH(_coins[i]).withdraw(dx)
 
