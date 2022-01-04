@@ -17,7 +17,7 @@ interface CurveToken:
 interface ERC20:
     def transfer(_to: address, _value: uint256) -> bool: nonpayable
     def transferFrom(_from: address, _to: address, _value: uint256) -> bool: nonpayable
-    def decimals() -> uint256: view
+    def decimals() -> uint8: view
     def balanceOf(_user: address) -> uint256: view
 
 interface WETH:
@@ -134,7 +134,6 @@ xcp_profit_a: public(uint256)  # Full profit at last claim of admin fees
 virtual_price: public(uint256)  # Cached (fast to read) virtual price also used internally
 not_adjusted: bool
 
-is_killed: public(bool)
 kill_deadline: public(uint256)
 admin_actions_deadline: public(uint256)
 
@@ -159,7 +158,7 @@ MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
 # N_COINS = 3 -> 1  (10**18 -> 10**18)
 # N_COINS = 4 -> 10**8  (10**18 -> 10**10)
 # PRICE_PRECISION_MUL: constant(uint256) = 1
-PRECISIONS: uint256[N_COINS]
+PRECISIONS: uint256  # packed
 
 EXP_PRECISION: constant(uint256) = 10**10
 
@@ -186,7 +185,7 @@ def initialize(
     ma_half_time: uint256,
     initial_price: uint256,
     _token: address,
-    _coins: address[N_COINS],
+    _coins: address[N_COINS]
 ):
     assert self.mid_fee == 0  # dev: check that we call it from factory
 
@@ -218,8 +217,8 @@ def initialize(
 
     self.token = _token
     self.coins = _coins
-    self.PRECISIONS = [10 ** (18 - ERC20(_coins[0]).decimals()),
-                       10 ** (18 - ERC20(_coins[1]).decimals())]
+    self.PRECISIONS = 10 ** convert(18 - ERC20(_coins[0]).decimals(), uint256) +\
+                      shift((10 ** convert(18 - ERC20(_coins[1]).decimals(), uint256)), 8)
 
 
 @payable
@@ -455,8 +454,11 @@ def halfpow(power: uint256) -> uint256:
 @internal
 @view
 def xp() -> uint256[N_COINS]:
-    return [self.balances[0] * self.PRECISIONS[0],
-            self.balances[1] * self.PRECISIONS[1] * self.price_scale / PRECISION]
+    p0: uint256 = self.PRECISIONS
+    p1: uint256 = shift(p0, -8)
+    p0 = bitwise_and(p0, 255)
+    return [self.balances[0] * p0,
+            self.balances[1] * p1 * self.price_scale / PRECISION]
 
 
 @view
@@ -713,7 +715,6 @@ def tweak_price(A_gamma: uint256[2],_xp: uint256[N_COINS], p_i: uint256, new_D: 
 @internal
 def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint256, min_dy: uint256,
               use_eth: bool, receiver: address, callbacker: address, callback_sig: Bytes[4]) -> uint256:
-    assert not self.is_killed  # dev: the pool is killed
     assert i != j  # dev: coin index out of range
     assert i < N_COINS  # dev: coin index out of range
     assert j < N_COINS  # dev: coin index out of range
@@ -725,38 +726,6 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     dy: uint256 = 0
 
     _coins: address[N_COINS] = self.coins
-    if use_eth and i == ETH_INDEX:
-        assert mvalue == dx  # dev: incorrect eth amount
-    else:
-        assert mvalue == 0  # dev: nonzero eth amount
-        if callback_sig == b"\x00\x00\x00\x00":
-            response: Bytes[32] = raw_call(
-                _coins[i],
-                concat(
-                    method_id("transferFrom(address,address,uint256)"),
-                    convert(sender, bytes32),
-                    convert(self, bytes32),
-                    convert(dx, bytes32),
-                ),
-                max_outsize=32,
-            )
-            if len(response) > 0:
-                assert convert(response, bool)  # dev: failed transfer
-        else:
-            c: address = _coins[i]
-            b: uint256 = ERC20(c).balanceOf(self)
-            raw_call(callbacker,
-                     concat(
-                        callback_sig,
-                        convert(sender, bytes32),
-                        convert(receiver, bytes32),
-                        convert(c, bytes32),
-                        convert(dx, bytes32)
-                     )
-            )
-            assert ERC20(c).balanceOf(self) - b == dx  # dev: callback didn't give us coins
-        if i == ETH_INDEX:
-            WETH(_coins[i]).withdraw(dx)
 
     y: uint256 = xp[j]
     x0: uint256 = xp[i]
@@ -764,15 +733,17 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     self.balances[i] = xp[i]
 
     price_scale: uint256 = self.price_scale
-    PRECISIONS: uint256[N_COINS] = self.PRECISIONS
+    p0: uint256 = self.PRECISIONS
+    p1: uint256 = shift(p0, -8)
+    p0 = bitwise_and(p0, 255)
 
-    xp = [xp[0] * PRECISIONS[0], xp[1] * price_scale * PRECISIONS[1] / PRECISION]
+    xp = [xp[0] * p0, xp[1] * price_scale * p1 / PRECISION]
 
-    prec_i: uint256 = PRECISIONS[0]
-    prec_j: uint256 = PRECISIONS[1]
+    prec_i: uint256 = p0
+    prec_j: uint256 = p1
     if i == 1:
-        prec_i = PRECISIONS[1]
-        prec_j = PRECISIONS[0]
+        prec_i = p1
+        prec_j = p0
 
     # In case ramp is happening
     t: uint256 = self.future_A_gamma_time
@@ -801,6 +772,42 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     y -= dy
 
     self.balances[j] = y
+
+    # Do transfers in and out together
+    if use_eth and i == ETH_INDEX:
+        assert mvalue == dx  # dev: incorrect eth amount
+    else:
+        assert mvalue == 0  # dev: nonzero eth amount
+        if callback_sig == b"\x00\x00\x00\x00":
+            response: Bytes[32] = raw_call(
+                _coins[i],
+                concat(
+                    method_id("transferFrom(address,address,uint256)"),
+                    convert(sender, bytes32),
+                    convert(self, bytes32),
+                    convert(dx, bytes32),
+                ),
+                max_outsize=32,
+            )
+            if len(response) > 0:
+                assert convert(response, bool)  # dev: failed transfer
+        else:
+            c: address = _coins[i]
+            b: uint256 = ERC20(c).balanceOf(self)
+            raw_call(callbacker,
+                     concat(
+                        callback_sig,
+                        convert(sender, bytes32),
+                        convert(receiver, bytes32),
+                        convert(c, bytes32),
+                        convert(dx, bytes32),
+                        convert(dy, bytes32)
+                     )
+            )
+            assert ERC20(c).balanceOf(self) - b == dx  # dev: callback didn't give us coins
+        if i == ETH_INDEX:
+            WETH(_coins[i]).withdraw(dx)
+
     if use_eth and j == ETH_INDEX:
         raw_call(receiver, b"", value=dy)
     else:
@@ -877,9 +884,11 @@ def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
     assert i < N_COINS  # dev: coin index out of range
     assert j < N_COINS  # dev: coin index out of range
 
-    PRECISIONS: uint256[N_COINS] = self.PRECISIONS
+    p0: uint256 = self.PRECISIONS
+    p1: uint256 = shift(p0, -8)
+    p0 = bitwise_and(p0, 255)
 
-    price_scale: uint256 = self.price_scale * PRECISIONS[1]
+    price_scale: uint256 = self.price_scale * p1
     xp: uint256[N_COINS] = self.balances
 
     A_gamma: uint256[2] = self._A_gamma()
@@ -888,7 +897,7 @@ def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
         D = self.newton_D(A_gamma[0], A_gamma[1], self.xp())
 
     xp[i] += dx
-    xp = [xp[0] * PRECISIONS[0], xp[1] * price_scale / PRECISION]
+    xp = [xp[0] * p0, xp[1] * price_scale / PRECISION]
 
     y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, j)
     dy: uint256 = xp[j] - y - 1
@@ -896,7 +905,7 @@ def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
     if j > 0:
         dy = dy * PRECISION / price_scale
     else:
-        dy /= PRECISIONS[0]
+        dy /= p0
     dy -= self._fee(xp) * dy / 10**10
 
     return dy
@@ -925,7 +934,6 @@ def _calc_token_fee(amounts: uint256[N_COINS], xp: uint256[N_COINS]) -> uint256:
 @nonreentrant('lock')
 def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
                   use_eth: bool = False, receiver: address = msg.sender) -> uint256:
-    assert not self.is_killed  # dev: the pool is killed
     assert amounts[0] > 0 or amounts[1] > 0  # dev: no coins to add
 
     A_gamma: uint256[2] = self._A_gamma()
@@ -945,11 +953,13 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
         self.balances[i] = bal
     xx = xp
 
-    PRECISIONS: uint256[N_COINS] = self.PRECISIONS
+    p0: uint256 = self.PRECISIONS
+    p1: uint256 = shift(p0, -8)
+    p0 = bitwise_and(p0, 255)
 
-    price_scale: uint256 = self.price_scale * PRECISIONS[1]
-    xp = [xp[0] * PRECISIONS[0], xp[1] * price_scale / PRECISION]
-    xp_old = [xp_old[0] * PRECISIONS[0], xp_old[1] * price_scale / PRECISION]
+    price_scale: uint256 = self.price_scale * p1
+    xp = [xp[0] * p0, xp[1] * price_scale / PRECISION]
+    xp_old = [xp_old[0] * p0, xp_old[1] * price_scale / PRECISION]
 
     if not use_eth:
         assert msg.value == 0  # dev: nonzero eth amount
@@ -1010,12 +1020,12 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
                 precision: uint256 = 0
                 ix: uint256 = 0
                 if amounts[0] == 0:
-                    S = xx[0] * PRECISIONS[0]
-                    precision = PRECISIONS[1]
+                    S = xx[0] * p0
+                    precision = p1
                     ix = 1
                 else:
-                    S = xx[1] * PRECISIONS[1]
-                    precision = PRECISIONS[0]
+                    S = xx[1] * p1
+                    precision = p0
                 S = S * d_token / token_supply
                 p = S * PRECISION / (amounts[ix] * precision - d_token * xx[ix] * precision / token_supply)
                 if ix == 0:
@@ -1082,11 +1092,14 @@ def remove_liquidity(_amount: uint256, min_amounts: uint256[N_COINS],
 @external
 def calc_token_amount(amounts: uint256[N_COINS]) -> uint256:
     token_supply: uint256 = CurveToken(self.token).totalSupply()
-    price_scale: uint256 = self.price_scale * self.PRECISIONS[1]
+    p0: uint256 = self.PRECISIONS
+    p1: uint256 = shift(p0, -8)
+    p0 = bitwise_and(p0, 255)
+    price_scale: uint256 = self.price_scale * p1
     A_gamma: uint256[2] = self._A_gamma()
     xp: uint256[N_COINS] = self.xp()
     amountsp: uint256[N_COINS] = [
-        amounts[0] * self.PRECISIONS[0],
+        amounts[0] * p0,
         amounts[1] * price_scale / PRECISION]
     D0: uint256 = self.D
     if self.future_A_gamma_time > 0:
@@ -1109,12 +1122,14 @@ def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint2
 
     xx: uint256[N_COINS] = self.balances
     D0: uint256 = 0
-    PRECISIONS: uint256[N_COINS] = self.PRECISIONS
+    p0: uint256 = self.PRECISIONS
+    p1: uint256 = shift(p0, -8)
+    p0 = bitwise_and(p0, 255)
 
-    price_scale_i: uint256 = self.price_scale * PRECISIONS[1]
-    xp: uint256[N_COINS] = [xx[0] * PRECISIONS[0], xx[1] * price_scale_i / PRECISION]
+    price_scale_i: uint256 = self.price_scale * p1
+    xp: uint256[N_COINS] = [xx[0] * p0, xx[1] * price_scale_i / PRECISION]
     if i == 0:
-        price_scale_i = PRECISION * PRECISIONS[0]
+        price_scale_i = PRECISION * p0
 
     if update_D:
         D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
@@ -1136,12 +1151,12 @@ def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint2
     if calc_price and dy > 10**5 and token_amount > 10**5:
         # p_i = dD / D0 * sum'(p_k * x_k) / (dy - dD / D0 * y0)
         S: uint256 = 0
-        precision: uint256 = PRECISIONS[0]
+        precision: uint256 = p0
         if i == 1:
-            S = xx[0] * PRECISIONS[0]
-            precision = PRECISIONS[1]
+            S = xx[0] * p0
+            precision = p1
         else:
-            S = xx[1] * PRECISIONS[1]
+            S = xx[1] * p1
         S = S * dD / D0
         p = S * PRECISION / (dy * precision - dD * xx[i] * precision / D0)
         if i == 0:
@@ -1160,8 +1175,6 @@ def calc_withdraw_one_coin(token_amount: uint256, i: uint256) -> uint256:
 @nonreentrant('lock')
 def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uint256,
                               use_eth: bool = False, receiver: address = msg.sender) -> uint256:
-    assert not self.is_killed  # dev: the pool is killed
-
     A_gamma: uint256[2] = self._A_gamma()
 
     dy: uint256 = 0
@@ -1363,19 +1376,6 @@ def revert_new_parameters():
     assert msg.sender == Factory(self.factory).admin()  # dev: only owner
 
     self.admin_actions_deadline = 0
-
-
-@external
-def kill_me():
-    assert msg.sender == Factory(self.factory).admin()  # dev: only owner
-    assert self.kill_deadline > block.timestamp  # dev: deadline has passed
-    self.is_killed = True
-
-
-@external
-def unkill_me():
-    assert msg.sender == Factory(self.factory).admin()  # dev: only owner
-    self.is_killed = False
 
 
 @internal
