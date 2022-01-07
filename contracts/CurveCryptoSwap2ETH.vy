@@ -134,7 +134,6 @@ xcp_profit_a: public(uint256)  # Full profit at last claim of admin fees
 virtual_price: public(uint256)  # Cached (fast to read) virtual price also used internally
 not_adjusted: bool
 
-kill_deadline: public(uint256)
 admin_actions_deadline: public(uint256)
 
 KILL_DEADLINE_DT: constant(uint256) = 2 * 30 * 86400
@@ -212,8 +211,6 @@ def initialize(
     self.ma_half_time = ma_half_time
 
     self.xcp_profit_a = 10**18
-
-    self.kill_deadline = block.timestamp + KILL_DEADLINE_DT
 
     self.token = _token
     self.coins = _coins
