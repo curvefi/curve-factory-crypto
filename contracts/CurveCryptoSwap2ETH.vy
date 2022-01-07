@@ -162,12 +162,12 @@ PRECISIONS: uint256  # packed
 EXP_PRECISION: constant(uint256) = 10**10
 
 # Implementation can be changed by changing this constant
-ETH_INDEX: immutable(uint256)
+WETH20: immutable(address)
 
 
 @external
-def __init__(_eth_index: uint256):
-    ETH_INDEX = _eth_index
+def __init__(_weth: address):
+    WETH20 = _weth
     self.mid_fee = 22022022
 
 
@@ -545,10 +545,11 @@ def _claim_admin_fees():
 
     # Gulp here
     for i in range(N_COINS):
-        if i == ETH_INDEX:
+        coin: address = self.coins[i]
+        if coin == WETH20:
             self.balances[i] = self.balance
         else:
-            self.balances[i] = ERC20(self.coins[i]).balanceOf(self)
+            self.balances[i] = ERC20(coin).balanceOf(self)
 
     vprice: uint256 = self.virtual_price
 
@@ -722,7 +723,8 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     p: uint256 = 0
     dy: uint256 = 0
 
-    _coins: address[N_COINS] = self.coins
+    in_coin: address = self.coins[i]
+    out_coin: address = self.coins[j]
 
     y: uint256 = xp[j]
     x0: uint256 = xp[i]
@@ -771,13 +773,14 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     self.balances[j] = y
 
     # Do transfers in and out together
-    if use_eth and i == ETH_INDEX:
+    # XXX coin vs ETH
+    if use_eth and in_coin == WETH20:
         assert mvalue == dx  # dev: incorrect eth amount
     else:
         assert mvalue == 0  # dev: nonzero eth amount
         if callback_sig == b"\x00\x00\x00\x00":
             response: Bytes[32] = raw_call(
-                _coins[i],
+                in_coin,
                 concat(
                     method_id("transferFrom(address,address,uint256)"),
                     convert(sender, bytes32),
@@ -789,29 +792,28 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
             if len(response) > 0:
                 assert convert(response, bool)  # dev: failed transfer
         else:
-            c: address = _coins[i]
-            b: uint256 = ERC20(c).balanceOf(self)
+            b: uint256 = ERC20(in_coin).balanceOf(self)
             raw_call(callbacker,
                      concat(
                         callback_sig,
                         convert(sender, bytes32),
                         convert(receiver, bytes32),
-                        convert(c, bytes32),
+                        convert(in_coin, bytes32),
                         convert(dx, bytes32),
                         convert(dy, bytes32)
                      )
             )
-            assert ERC20(c).balanceOf(self) - b == dx  # dev: callback didn't give us coins
-        if i == ETH_INDEX:
-            WETH(_coins[i]).withdraw(dx)
+            assert ERC20(in_coin).balanceOf(self) - b == dx  # dev: callback didn't give us coins
+        if in_coin == WETH20:
+            WETH(WETH20).withdraw(dx)
 
-    if use_eth and j == ETH_INDEX:
+    if use_eth and out_coin == WETH20:
         raw_call(receiver, b"", value=dy)
     else:
-        if j == ETH_INDEX:
-            WETH(_coins[j]).deposit(value=dy)
+        if out_coin == WETH20:
+            WETH(WETH20).deposit(value=dy)
         response: Bytes[32] = raw_call(
-            _coins[j],
+            out_coin,
             concat(
                 method_id("transfer(address,uint256)"),
                 convert(receiver, bytes32),
@@ -962,11 +964,11 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
         assert msg.value == 0  # dev: nonzero eth amount
 
     for i in range(N_COINS):
-        if use_eth and i == ETH_INDEX:
+        coin: address = self.coins[i]
+        if use_eth and coin == WETH20:
             assert msg.value == amounts[i]  # dev: incorrect eth amount
         if amounts[i] > 0:
-            if (not use_eth) or (i != ETH_INDEX):
-                coin: address = self.coins[i]
+            if (not use_eth) or (coin != WETH20):
                 response: Bytes[32] = raw_call(
                     coin,
                     concat(
@@ -979,8 +981,8 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
                 )
                 if len(response) > 0:
                     assert convert(response, bool)
-                if i == ETH_INDEX:
-                    WETH(coin).withdraw(amounts[i])
+                if coin == WETH20:
+                    WETH(WETH20).withdraw(amounts[i])
             amountsp[i] = xp[i] - xp_old[i]
 
     t: uint256 = self.future_A_gamma_time
@@ -1061,12 +1063,12 @@ def remove_liquidity(_amount: uint256, min_amounts: uint256[N_COINS],
         assert d_balance >= min_amounts[i]
         self.balances[i] = balances[i] - d_balance
         balances[i] = d_balance  # now it's the amounts going out
-        if use_eth and i == ETH_INDEX:
+        coin: address = self.coins[i]
+        if use_eth and coin == WETH20:
             raw_call(receiver, b"", value=d_balance)
         else:
-            coin: address = self.coins[i]
-            if i == ETH_INDEX:
-                WETH(coin).deposit(value=d_balance)
+            if coin == WETH20:
+                WETH(WETH20).deposit(value=d_balance)
             response: Bytes[32] = raw_call(
                 coin,
                 concat(
@@ -1188,12 +1190,12 @@ def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uin
     self.balances[i] -= dy
     CurveToken(self.token).burnFrom(msg.sender, token_amount)
 
-    if use_eth and i == ETH_INDEX:
+    coin: address = self.coins[i]
+    if use_eth and coin == WETH20:
         raw_call(receiver, b"", value=dy)
     else:
-        coin: address = self.coins[i]
-        if i == ETH_INDEX:
-            WETH(coin).deposit(value=dy)
+        if coin == WETH20:
+            WETH(WETH20).deposit(value=dy)
         response: Bytes[32] = raw_call(
             coin,
             concat(
