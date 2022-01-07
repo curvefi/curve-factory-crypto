@@ -136,7 +136,6 @@ not_adjusted: bool
 
 admin_actions_deadline: public(uint256)
 
-KILL_DEADLINE_DT: constant(uint256) = 2 * 30 * 86400
 ADMIN_ACTIONS_DELAY: constant(uint256) = 3 * 86400
 MIN_RAMP_TIME: constant(uint256) = 86400
 
