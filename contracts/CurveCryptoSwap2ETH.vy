@@ -223,6 +223,37 @@ def __default__():
     pass
 
 
+@internal
+def _safe_transfer(coin: address, _to: address, _amount: uint256):
+    response: Bytes[32] = raw_call(
+        coin,
+        concat(
+            method_id("transfer(address,uint256)"),
+            convert(_to, bytes32),
+            convert(_amount, bytes32),
+        ),
+        max_outsize=32,
+    )
+    if len(response) > 0:
+        assert convert(response, bool)
+
+
+@internal
+def _safe_transfer_from(coin: address, _from: address, _to: address, _amount: uint256):
+    response: Bytes[32] = raw_call(
+        coin,
+        concat(
+            method_id("transferFrom(address,address,uint256)"),
+            convert(_from, bytes32),
+            convert(_to, bytes32),
+            convert(_amount, bytes32),
+        ),
+        max_outsize=32,
+    )
+    if len(response) > 0:
+        assert convert(response, bool)  # dev: failed transfer
+
+
 ### Math functions
 @internal
 @pure
@@ -778,18 +809,7 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     else:
         assert mvalue == 0  # dev: nonzero eth amount
         if callback_sig == b"\x00\x00\x00\x00":
-            response: Bytes[32] = raw_call(
-                in_coin,
-                concat(
-                    method_id("transferFrom(address,address,uint256)"),
-                    convert(sender, bytes32),
-                    convert(self, bytes32),
-                    convert(dx, bytes32),
-                ),
-                max_outsize=32,
-            )
-            if len(response) > 0:
-                assert convert(response, bool)  # dev: failed transfer
+            self._safe_transfer_from(in_coin, sender, self, dx)
         else:
             b: uint256 = ERC20(in_coin).balanceOf(self)
             raw_call(callbacker,
@@ -811,17 +831,7 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     else:
         if out_coin == WETH20:
             WETH(WETH20).deposit(value=dy)
-        response: Bytes[32] = raw_call(
-            out_coin,
-            concat(
-                method_id("transfer(address,uint256)"),
-                convert(receiver, bytes32),
-                convert(dy, bytes32),
-            ),
-            max_outsize=32,
-        )
-        if len(response) > 0:
-            assert convert(response, bool)
+        self._safe_transfer(out_coin, receiver, dy)
 
     y *= prec_j
     if j > 0:
@@ -968,18 +978,7 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
             assert msg.value == amounts[i]  # dev: incorrect eth amount
         if amounts[i] > 0:
             if (not use_eth) or (coin != WETH20):
-                response: Bytes[32] = raw_call(
-                    coin,
-                    concat(
-                        method_id("transferFrom(address,address,uint256)"),
-                        convert(msg.sender, bytes32),
-                        convert(self, bytes32),
-                        convert(amounts[i], bytes32),
-                    ),
-                    max_outsize=32,
-                )
-                if len(response) > 0:
-                    assert convert(response, bool)
+                self._safe_transfer_from(coin, msg.sender, self, amounts[i])
                 if coin == WETH20:
                     WETH(WETH20).withdraw(amounts[i])
             amountsp[i] = xp[i] - xp_old[i]
@@ -1068,17 +1067,7 @@ def remove_liquidity(_amount: uint256, min_amounts: uint256[N_COINS],
         else:
             if coin == WETH20:
                 WETH(WETH20).deposit(value=d_balance)
-            response: Bytes[32] = raw_call(
-                coin,
-                concat(
-                    method_id("transfer(address,uint256)"),
-                    convert(receiver, bytes32),
-                    convert(d_balance, bytes32),
-                ),
-                max_outsize=32,
-            )
-            if len(response) > 0:
-                assert convert(response, bool)
+            self._safe_transfer(coin, receiver, d_balance)
 
     D: uint256 = self.D
     self.D = D - D * amount / total_supply
@@ -1195,17 +1184,7 @@ def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uin
     else:
         if coin == WETH20:
             WETH(WETH20).deposit(value=dy)
-        response: Bytes[32] = raw_call(
-            coin,
-            concat(
-                method_id("transfer(address,uint256)"),
-                convert(receiver, bytes32),
-                convert(dy, bytes32),
-            ),
-            max_outsize=32,
-        )
-        if len(response) > 0:
-            assert convert(response, bool)
+        self._safe_transfer(coin, receiver, dy)
 
     self.tweak_price(A_gamma, xp, p, D)
 
