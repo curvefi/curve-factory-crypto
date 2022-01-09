@@ -28,7 +28,7 @@ def crypto_swap(CurveCryptoSwap2ETH, factory, coins, accounts):
         600,  # ma_half_time
         INITIAL_PRICES[0],
         {'from': accounts[0]})
-    return CurveCryptoSwap2ETH.at(factory.pool_list(0))
+    return CurveCryptoSwap2ETH.at(factory.pool_list(factory.pool_count() - 1))
 
 
 def _crypto_swap_with_deposit(crypto_swap, coins, accounts):

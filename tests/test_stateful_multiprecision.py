@@ -4,7 +4,7 @@ from .conftest import _crypto_swap_with_deposit
 
 COINS = [
     ('USDC', 6),
-    ('EURX', 18)]
+    ('EURX', 17)]
 
 INITIAL_PRICES = [int(1.2 * 10**18)]
 
@@ -20,30 +20,28 @@ def coins_mp(ERC20Mock, accounts):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def token_mp(CurveTokenV5, accounts):
-    yield CurveTokenV5.deploy("Curve USD-EUR", "crvUSDEUR", {"from": accounts[0]})
+def crypto_swap_mp(CurveCryptoSwap2ETH, factory, coins_mp, accounts):
+    factory.deploy_pool(
+        'EUR/USD',
+        'EURUSD',
+        coins_mp,
+        90 * 2**2 * 10000,  # A
+        int(2.8e-4 * 1e18),  # gamma
+        int(5e-4 * 1e10),  # mid_fee
+        int(4e-3 * 1e10),  # out_fee
+        10**10,  # allowed_extra_profit
+        int(0.012 * 1e18),  # fee_gamma
+        int(0.55e-5 * 1e18),  # adjustment_step
+        0,  # admin_fee
+        600,  # ma_half_time
+        INITIAL_PRICES[0],
+        {'from': accounts[0]})
+    return CurveCryptoSwap2ETH.at(factory.pool_list(factory.pool_count() - 1))
 
 
 @pytest.fixture(scope="module", autouse=True)
-def crypto_swap_mp(CurveCryptoSwap2, token_mp, coins_mp, accounts):
-    swap = CurveCryptoSwap2.deploy(
-            accounts[0],
-            accounts[0],
-            90 * 2**2 * 10000,  # A
-            int(2.8e-4 * 1e18),  # gamma
-            int(8.5e-5 * 1e10),  # mid_fee
-            int(1.3e-3 * 1e10),  # out_fee
-            10**10,  # allowed_extra_profit
-            int(0.012 * 1e18),  # fee_gamma
-            int(0.55e-5 * 1e18),  # adjustment_step
-            0,  # admin_fee
-            600,  # ma_half_time
-            INITIAL_PRICES[0],
-            token_mp,
-            coins_mp,
-            {'from': accounts[0]})
-    token_mp.set_minter(swap, {"from": accounts[0]})
-    return swap
+def token_mp(CurveTokenV5, crypto_swap_mp):
+    yield CurveTokenV5.at(crypto_swap_mp.token())
 
 
 @pytest.fixture(scope="module")

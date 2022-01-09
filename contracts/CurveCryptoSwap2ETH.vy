@@ -213,8 +213,8 @@ def initialize(
 
     self.token = _token
     self.coins = _coins
-    self.PRECISIONS = 10 ** convert(18 - ERC20(_coins[0]).decimals(), uint256) +\
-                      shift((10 ** convert(18 - ERC20(_coins[1]).decimals(), uint256)), 8)
+    self.PRECISIONS = convert(18 - ERC20(_coins[0]).decimals(), uint256) +\
+                      shift(convert(18 - ERC20(_coins[1]).decimals(), uint256), 8)
 
 
 @payable
@@ -252,6 +252,15 @@ def _safe_transfer_from(coin: address, _from: address, _to: address, _amount: ui
     )
     if len(response) > 0:
         assert convert(response, bool)  # dev: failed transfer
+
+
+@internal
+@view
+def _get_precisions() -> uint256[2]:
+    p0: uint256 = self.PRECISIONS
+    p1: uint256 = 10 ** shift(p0, -8)
+    p0 = 10 ** bitwise_and(p0, 255)
+    return [p0, p1]
 
 
 ### Math functions
@@ -481,11 +490,9 @@ def halfpow(power: uint256) -> uint256:
 @internal
 @view
 def xp() -> uint256[N_COINS]:
-    p0: uint256 = self.PRECISIONS
-    p1: uint256 = shift(p0, -8)
-    p0 = bitwise_and(p0, 255)
-    return [self.balances[0] * p0,
-            self.balances[1] * p1 * self.price_scale / PRECISION]
+    precisions: uint256[2] = self._get_precisions()
+    return [self.balances[0] * precisions[0],
+            self.balances[1] * precisions[1] * self.price_scale / PRECISION]
 
 
 @view
@@ -762,17 +769,15 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     self.balances[i] = xp[i]
 
     price_scale: uint256 = self.price_scale
-    p0: uint256 = self.PRECISIONS
-    p1: uint256 = shift(p0, -8)
-    p0 = bitwise_and(p0, 255)
+    precisions: uint256[2] = self._get_precisions()
 
-    xp = [xp[0] * p0, xp[1] * price_scale * p1 / PRECISION]
+    xp = [xp[0] * precisions[0], xp[1] * price_scale * precisions[1] / PRECISION]
 
-    prec_i: uint256 = p0
-    prec_j: uint256 = p1
+    prec_i: uint256 = precisions[0]
+    prec_j: uint256 = precisions[1]
     if i == 1:
-        prec_i = p1
-        prec_j = p0
+        prec_i = precisions[1]
+        prec_j = precisions[0]
 
     # In case ramp is happening
     t: uint256 = self.future_A_gamma_time
@@ -892,11 +897,9 @@ def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
     assert i < N_COINS  # dev: coin index out of range
     assert j < N_COINS  # dev: coin index out of range
 
-    p0: uint256 = self.PRECISIONS
-    p1: uint256 = shift(p0, -8)
-    p0 = bitwise_and(p0, 255)
+    precisions: uint256[2] = self._get_precisions()
 
-    price_scale: uint256 = self.price_scale * p1
+    price_scale: uint256 = self.price_scale * precisions[1]
     xp: uint256[N_COINS] = self.balances
 
     A_gamma: uint256[2] = self._A_gamma()
@@ -905,7 +908,7 @@ def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
         D = self.newton_D(A_gamma[0], A_gamma[1], self.xp())
 
     xp[i] += dx
-    xp = [xp[0] * p0, xp[1] * price_scale / PRECISION]
+    xp = [xp[0] * precisions[0], xp[1] * price_scale / PRECISION]
 
     y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, j)
     dy: uint256 = xp[j] - y - 1
@@ -913,7 +916,7 @@ def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
     if j > 0:
         dy = dy * PRECISION / price_scale
     else:
-        dy /= p0
+        dy /= precisions[0]
     dy -= self._fee(xp) * dy / 10**10
 
     return dy
@@ -961,13 +964,11 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
         self.balances[i] = bal
     xx = xp
 
-    p0: uint256 = self.PRECISIONS
-    p1: uint256 = shift(p0, -8)
-    p0 = bitwise_and(p0, 255)
+    precisions: uint256[2] = self._get_precisions()
 
-    price_scale: uint256 = self.price_scale * p1
-    xp = [xp[0] * p0, xp[1] * price_scale / PRECISION]
-    xp_old = [xp_old[0] * p0, xp_old[1] * price_scale / PRECISION]
+    price_scale: uint256 = self.price_scale * precisions[1]
+    xp = [xp[0] * precisions[0], xp[1] * price_scale / PRECISION]
+    xp_old = [xp_old[0] * precisions[0], xp_old[1] * price_scale / PRECISION]
 
     if not use_eth:
         assert msg.value == 0  # dev: nonzero eth amount
@@ -1017,12 +1018,12 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
                 precision: uint256 = 0
                 ix: uint256 = 0
                 if amounts[0] == 0:
-                    S = xx[0] * p0
-                    precision = p1
+                    S = xx[0] * precisions[0]
+                    precision = precisions[1]
                     ix = 1
                 else:
-                    S = xx[1] * p1
-                    precision = p0
+                    S = xx[1] * precisions[1]
+                    precision = precisions[0]
                 S = S * d_token / token_supply
                 p = S * PRECISION / (amounts[ix] * precision - d_token * xx[ix] * precision / token_supply)
                 if ix == 0:
@@ -1079,14 +1080,12 @@ def remove_liquidity(_amount: uint256, min_amounts: uint256[N_COINS],
 @external
 def calc_token_amount(amounts: uint256[N_COINS]) -> uint256:
     token_supply: uint256 = CurveToken(self.token).totalSupply()
-    p0: uint256 = self.PRECISIONS
-    p1: uint256 = shift(p0, -8)
-    p0 = bitwise_and(p0, 255)
-    price_scale: uint256 = self.price_scale * p1
+    precisions: uint256[2] = self._get_precisions()
+    price_scale: uint256 = self.price_scale * precisions[1]
     A_gamma: uint256[2] = self._A_gamma()
     xp: uint256[N_COINS] = self.xp()
     amountsp: uint256[N_COINS] = [
-        amounts[0] * p0,
+        amounts[0] * precisions[0],
         amounts[1] * price_scale / PRECISION]
     D0: uint256 = self.D
     if self.future_A_gamma_time > 0:
@@ -1109,14 +1108,12 @@ def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint2
 
     xx: uint256[N_COINS] = self.balances
     D0: uint256 = 0
-    p0: uint256 = self.PRECISIONS
-    p1: uint256 = shift(p0, -8)
-    p0 = bitwise_and(p0, 255)
+    precisions: uint256[2] = self._get_precisions()
 
-    price_scale_i: uint256 = self.price_scale * p1
-    xp: uint256[N_COINS] = [xx[0] * p0, xx[1] * price_scale_i / PRECISION]
+    price_scale_i: uint256 = self.price_scale * precisions[1]
+    xp: uint256[N_COINS] = [xx[0] * precisions[0], xx[1] * price_scale_i / PRECISION]
     if i == 0:
-        price_scale_i = PRECISION * p0
+        price_scale_i = PRECISION * precisions[0]
 
     if update_D:
         D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
@@ -1138,12 +1135,12 @@ def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint2
     if calc_price and dy > 10**5 and token_amount > 10**5:
         # p_i = dD / D0 * sum'(p_k * x_k) / (dy - dD / D0 * y0)
         S: uint256 = 0
-        precision: uint256 = p0
+        precision: uint256 = precisions[0]
         if i == 1:
-            S = xx[0] * p0
-            precision = p1
+            S = xx[0] * precisions[0]
+            precision = precisions[1]
         else:
-            S = xx[1] * p1
+            S = xx[1] * precisions[1]
         S = S * dD / D0
         p = S * PRECISION / (dy * precision - dD * xx[i] * precision / D0)
         if i == 0:
