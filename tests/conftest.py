@@ -25,22 +25,22 @@ def factory(Factory, CurveTokenV5, CurveCryptoSwap2ETH, LiquidityGauge, weth, ac
 
 @pytest.fixture(scope="module", autouse=True)
 def crypto_swap(CurveCryptoSwap2ETH, factory, coins, accounts):
-    return CurveCryptoSwap2ETH.at(
-        factory.deploy_pool(
-            'EUR/USD',
-            'EURUSD',
-            coins,
-            90 * 2**2 * 10000,  # A
-            int(2.8e-4 * 1e18),  # gamma
-            int(5e-4 * 1e10),  # mid_fee
-            int(4e-3 * 1e10),  # out_fee
-            10**10,  # allowed_extra_profit
-            int(0.012 * 1e18),  # fee_gamma
-            int(0.55e-5 * 1e18),  # adjustment_step
-            0,  # admin_fee
-            600,  # ma_half_time
-            INITIAL_PRICES[0],
-            {'from': accounts[0]}))
+    factory.deploy_pool(
+        'EUR/USD',
+        'EURUSD',
+        coins,
+        90 * 2**2 * 10000,  # A
+        int(2.8e-4 * 1e18),  # gamma
+        int(5e-4 * 1e10),  # mid_fee
+        int(4e-3 * 1e10),  # out_fee
+        10**10,  # allowed_extra_profit
+        int(0.012 * 1e18),  # fee_gamma
+        int(0.55e-5 * 1e18),  # adjustment_step
+        0,  # admin_fee
+        600,  # ma_half_time
+        INITIAL_PRICES[0],
+        {'from': accounts[0]})
+    return CurveCryptoSwap2ETH.at(factory.pool_list(0))
 
 
 @pytest.fixture(scope="module", autouse=True)
