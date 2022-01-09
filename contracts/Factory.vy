@@ -18,6 +18,7 @@ interface ERC20:
     def totalSupply() -> uint256: view
     def approve(_spender: address, _amount: uint256): nonpayable
     def initialize(_name: String[64], _symbol: String[32]): nonpayable
+    def set_minter(_minter: address): nonpayable
 
 interface CryptoPool:
     def A() -> uint256: view
@@ -299,6 +300,7 @@ def deploy_pool(
         A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
         adjustment_step, admin_fee, ma_half_time, initial_price,
         token, _coins)
+    ERC20(token).set_minter(pool)
 
     length: uint256 = self.pool_count
     self.pool_list[length] = pool
