@@ -11,7 +11,6 @@ struct PoolArray:
     liquidity_gauge: address
     coins: address[2]
     decimals: uint256[2]
-    use_eth: bool
 
 interface ERC20:
     def balanceOf(_addr: address) -> uint256: view
@@ -221,6 +220,21 @@ def get_gauge(_pool: address) -> address:
     return self.pool_data[_pool].liquidity_gauge
 
 
+@view
+@external
+def get_eth_index(_pool: address) -> uint256:
+    for i in range(2):
+        if self.pool_data[_pool].coins[i] == WETH:
+            return i
+    return MAX_UINT256
+
+
+@view
+@external
+def get_token(_pool: address) -> address:
+    return self.pool_data[_pool].token
+
+
 # <--- Pool Deployers --->
 
 @external
@@ -268,13 +282,10 @@ def deploy_pool(
     assert initial_price < 10**30
 
     decimals: uint256[2] = empty(uint256[2])
-    use_eth: bool = False
     for i in range(2):
         d: uint256 = ERC20(_coins[i]).decimals()
         assert d < 19, "Max 18 decimals for coins"
         decimals[i] = d
-        if _coins[i] == WETH:
-            use_eth = True
     assert _coins[0] != _coins[1], "Duplicate coins"
 
     name: String[64] = concat("Curve.fi Factory Crypto Pool: ", _name)
@@ -295,7 +306,6 @@ def deploy_pool(
     self.pool_data[pool].token = token
     self.pool_data[pool].decimals = decimals
     self.pool_data[pool].coins = _coins
-    self.pool_data[pool].use_eth = use_eth
 
     for i in range(2):
         coin: address = _coins[i]
