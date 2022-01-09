@@ -6,7 +6,7 @@
 
 interface Factory:
     def admin() -> address: view
-    def get_fee_receiver(_pool: address) -> address: view
+    def fee_receiver() -> address: view
 
 interface CurveToken:
     def totalSupply() -> uint256: view
@@ -593,7 +593,7 @@ def _claim_admin_fees():
     if xcp_profit > xcp_profit_a:
         fees: uint256 = (xcp_profit - xcp_profit_a) * self.admin_fee / (2 * 10**10)
         if fees > 0:
-            receiver: address = Factory(self.factory).get_fee_receiver(self)
+            receiver: address = Factory(self.factory).fee_receiver()
             if receiver != ZERO_ADDRESS:
                 frac: uint256 = vprice * 10**18 / (vprice - fees) - 10**18
                 claimed: uint256 = CurveToken(self.token).mint_relative(receiver, frac)
