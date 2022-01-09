@@ -265,8 +265,8 @@ def deploy_pool(
     # Validate parameters
     assert A > MIN_A-1
     assert A < MAX_A+1
-    assert gamma < MIN_GAMMA-1
-    assert gamma > MAX_GAMMA+1
+    assert gamma > MIN_GAMMA-1
+    assert gamma < MAX_GAMMA+1
     assert mid_fee > MIN_FEE-1
     assert mid_fee < MAX_FEE-1
     assert out_fee >= mid_fee

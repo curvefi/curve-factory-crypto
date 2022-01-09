@@ -15,17 +15,17 @@ def weth(WETH, accounts):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def factory(Factory, CurveTokenV5, CurveCryptoSwap2, LiquidityGauge, weth, accounts):
+def factory(Factory, CurveTokenV5, CurveCryptoSwap2ETH, LiquidityGauge, weth, accounts):
     token_impl = CurveTokenV5.deploy({'from': accounts[0]})
-    pool_impl = CurveCryptoSwap2.deploy(weth, {'from': accounts[0]})
+    pool_impl = CurveCryptoSwap2ETH.deploy(weth, {'from': accounts[0]})
     gauge_impl = LiquidityGauge.deploy({'from': accounts[0]})
     return Factory.deploy(accounts[0], pool_impl, token_impl, gauge_impl, weth,
                           {'from': accounts[0]})
 
 
 @pytest.fixture(scope="module", autouse=True)
-def crypto_swap(CurveCryptoSwap2, factory, coins, accounts):
-    return CurveCryptoSwap2.at(
+def crypto_swap(CurveCryptoSwap2ETH, factory, coins, accounts):
+    return CurveCryptoSwap2ETH.at(
         factory.deploy_pool(
             'EUR/USD',
             'EURUSD',
