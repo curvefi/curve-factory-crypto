@@ -155,10 +155,10 @@ def test_price_scale_change(chain, crypto_swap_with_deposit, i, coins, accounts)
     coins[0]._mint_for_testing(user, 10**18)
     crypto_swap_with_deposit.exchange(0, 1, 10**18, 0, {'from': user})
     step = max(crypto_swap_with_deposit.adjustment_step() / 1e18,
-               abs(log(crypto_swap_with_deposit.price_oracle() / crypto_swap_with_deposit.price_scale())) / 10)
+               abs(log(crypto_swap_with_deposit.price_oracle() / crypto_swap_with_deposit.price_scale())) / 5)
     price_scale_2 = crypto_swap_with_deposit.price_scale()
 
     price_diff = abs(log(price_scale_2 / price_scale_1))
-    assert price_diff > 0 and abs(log(price_diff / step)) < 2e-1
+    assert price_diff > 0 and abs(log(price_diff / step)) < 3e-1
 
     assert approx(crypto_swap_with_deposit.virtual_price(), crypto_swap_with_deposit.get_virtual_price(), 1e-10)
