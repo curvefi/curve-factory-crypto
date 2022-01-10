@@ -42,6 +42,8 @@ class StatefulAdmin(StatefulBase):
         super().rule_exchange(exchange_amount_in_converted, exchange_i, user)
         admin_balance = self.token.balanceOf(self.accounts[0]) - admin_balance
         self.total_supply += admin_balance
+        if admin_balance > 0:
+            self.xcp_profit = self.swap.xcp_profit()
 
     def rule_claim_admin_fees(self):
         balance = self.token.balanceOf(self.accounts[0])
