@@ -695,7 +695,7 @@ def tweak_price(A_gamma: uint256[2],_xp: uint256[N_COINS], p_i: uint256, new_D: 
         norm -= 10**18
     else:
         norm = 10**18 - norm
-    adjustment_step: uint256 = max(self.adjustment_step, norm / 10)
+    adjustment_step: uint256 = max(self.adjustment_step, norm / 5)
 
     needs_adjustment: bool = self.not_adjusted
     # if not needs_adjustment and (virtual_price-10**18 > (xcp_profit-10**18)/2 + self.allowed_extra_profit):
