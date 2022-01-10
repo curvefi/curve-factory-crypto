@@ -67,7 +67,7 @@ def __init__():
 
 
 @external
-def initialize(_name: String[64], _symbol: String[32]):
+def initialize(_name: String[64], _symbol: String[32], _pool: address):
     assert self.minter == ZERO_ADDRESS  # dev: check that we call it from factory
 
     self.name = _name
@@ -78,8 +78,8 @@ def initialize(_name: String[64], _symbol: String[32]):
         _abi_encode(EIP712_TYPEHASH, keccak256(_name), keccak256(VERSION), chain.id, self)
     )
 
-    self.minter = msg.sender
-    log SetMinter(ZERO_ADDRESS, msg.sender)
+    self.minter = _pool
+    log SetMinter(ZERO_ADDRESS, _pool)
 
     # fire a transfer event so block explorers identify the contract as an ERC20
     log Transfer(ZERO_ADDRESS, msg.sender, 0)

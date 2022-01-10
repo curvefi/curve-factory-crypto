@@ -17,8 +17,7 @@ interface ERC20:
     def decimals() -> uint256: view
     def totalSupply() -> uint256: view
     def approve(_spender: address, _amount: uint256): nonpayable
-    def initialize(_name: String[64], _symbol: String[32]): nonpayable
-    def set_minter(_minter: address): nonpayable
+    def initialize(_name: String[64], _symbol: String[32], _pool: address): nonpayable
 
 interface CryptoPool:
     def A() -> uint256: view
@@ -293,14 +292,13 @@ def deploy_pool(
     symbol: String[32] = concat(_symbol, "-f")
 
     token: address = create_forwarder_to(self.token_implementation)
-    ERC20(token).initialize(name, symbol)
-
     pool: address = create_forwarder_to(self.pool_implementation)
+
+    ERC20(token).initialize(name, symbol, pool)
     CryptoPool(pool).initialize(
         A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
         adjustment_step, admin_fee, ma_half_time, initial_price,
         token, _coins)
-    ERC20(token).set_minter(pool)
 
     length: uint256 = self.pool_count
     self.pool_list[length] = pool
