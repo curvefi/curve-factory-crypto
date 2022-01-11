@@ -124,7 +124,7 @@ pool_list: public(address[4294967296])   # master list of pools
 @external
 def __init__(
     _fee_receiver: address,
-    _pool_implementation: address
+    _pool_implementation: address,
     _token_implementation: address, 
     _gauge_implementation: address,
     _weth: address
@@ -142,111 +142,6 @@ def __init__(
     log UpdateTokenImplementation(ZERO_ADDRESS, _token_implementation)
     log UpdateGaugeImplementation(ZERO_ADDRESS, _gauge_implementation)
     log TransferOwnership(ZERO_ADDRESS, msg.sender)
-
-
-# <--- Factory Getters --->
-
-
-@view
-@external
-def find_pool_for_coins(_from: address, _to: address, i: uint256 = 0) -> address:
-    """
-    @notice Find an available pool for exchanging two coins
-    @param _from Address of coin to be sent
-    @param _to Address of coin to be received
-    @param i Index value. When multiple pools are available
-            this value is used to return the n'th address.
-    @return Pool address
-    """
-    key: uint256 = bitwise_xor(convert(_from, uint256), convert(_to, uint256))
-    return self.markets[key][i]
-
-
-# <--- Pool Getters --->
-
-@view
-@external
-def get_coins(_pool: address) -> address[2]:
-    """
-    @notice Get the coins within a pool
-    @param _pool Pool address
-    @return List of coin addresses
-    """
-    return self.pool_data[_pool].coins
-
-
-@view
-@external
-def get_decimals(_pool: address) -> uint256[2]:
-    """
-    @notice Get decimal places for each coin within a pool
-    @param _pool Pool address
-    @return uint256 list of decimals
-    """
-    return self.pool_data[_pool].decimals
-
-
-@view
-@external
-def get_balances(_pool: address) -> uint256[2]:
-    """
-    @notice Get balances for each coin within a pool
-    @dev For pools using lending, these are the wrapped coin balances
-    @param _pool Pool address
-    @return uint256 list of balances
-    """
-    return [CryptoPool(_pool).balances(0), CryptoPool(_pool).balances(1)]
-
-
-@view
-@external
-def get_coin_indices(
-    _pool: address,
-    _from: address,
-    _to: address
-) -> (uint256, uint256):
-    """
-    @notice Convert coin addresses to indices for use with pool methods
-    @param _pool Pool address
-    @param _from Coin address to be used as `i` within a pool
-    @param _to Coin address to be used as `j` within a pool
-    @return uint256 `i`, uint256 `j`
-    """
-    coins: address[2] = self.pool_data[_pool].coins
-
-    if _from == coins[0] and _to == coins[1]:
-        return 0, 1
-    elif _from == coins[1] and _to == coins[0]:
-        return 1, 0
-    else:
-        raise "Coins not found"
-
-
-@view
-@external
-def get_gauge(_pool: address) -> address:
-    """
-    @notice Get the address of the liquidity gauge contract for a factory pool
-    @dev Returns `ZERO_ADDRESS` if a gauge has not been deployed
-    @param _pool Pool address
-    @return Implementation contract address
-    """
-    return self.pool_data[_pool].liquidity_gauge
-
-
-@view
-@external
-def get_eth_index(_pool: address) -> uint256:
-    for i in range(2):
-        if self.pool_data[_pool].coins[i] == WETH:
-            return i
-    return MAX_UINT256
-
-
-@view
-@external
-def get_token(_pool: address) -> address:
-    return self.pool_data[_pool].token
 
 
 # <--- Pool Deployers --->
@@ -270,8 +165,7 @@ def deploy_pool(
     """
     @notice Deploy a new pool
     @param _name Name of the new plain pool
-    @param _symbol Symbol for the new plain pool - will be
-                   concatenated with factory symbol
+    @param _symbol Symbol for the new plain pool - will be concatenated with factory symbol
     Other parameters need some description
     @return Address of the deployed pool
     """
@@ -439,3 +333,116 @@ def accept_transfer_ownership():
 
     log TransferOwnership(self.admin, msg.sender)
     self.admin = msg.sender
+
+
+# <--- Factory Getters --->
+
+
+@view
+@external
+def find_pool_for_coins(_from: address, _to: address, i: uint256 = 0) -> address:
+    """
+    @notice Find an available pool for exchanging two coins
+    @param _from Address of coin to be sent
+    @param _to Address of coin to be received
+    @param i Index value. When multiple pools are available
+            this value is used to return the n'th address.
+    @return Pool address
+    """
+    key: uint256 = bitwise_xor(convert(_from, uint256), convert(_to, uint256))
+    return self.markets[key][i]
+
+
+# <--- Pool Getters --->
+
+
+@view
+@external
+def get_coins(_pool: address) -> address[2]:
+    """
+    @notice Get the coins within a pool
+    @param _pool Pool address
+    @return List of coin addresses
+    """
+    return self.pool_data[_pool].coins
+
+
+@view
+@external
+def get_decimals(_pool: address) -> uint256[2]:
+    """
+    @notice Get decimal places for each coin within a pool
+    @param _pool Pool address
+    @return uint256 list of decimals
+    """
+    return self.pool_data[_pool].decimals
+
+
+@view
+@external
+def get_balances(_pool: address) -> uint256[2]:
+    """
+    @notice Get balances for each coin within a pool
+    @dev For pools using lending, these are the wrapped coin balances
+    @param _pool Pool address
+    @return uint256 list of balances
+    """
+    return [CryptoPool(_pool).balances(0), CryptoPool(_pool).balances(1)]
+
+
+@view
+@external
+def get_coin_indices(
+    _pool: address,
+    _from: address,
+    _to: address
+) -> (uint256, uint256):
+    """
+    @notice Convert coin addresses to indices for use with pool methods
+    @param _pool Pool address
+    @param _from Coin address to be used as `i` within a pool
+    @param _to Coin address to be used as `j` within a pool
+    @return uint256 `i`, uint256 `j`
+    """
+    coins: address[2] = self.pool_data[_pool].coins
+
+    if _from == coins[0] and _to == coins[1]:
+        return 0, 1
+    elif _from == coins[1] and _to == coins[0]:
+        return 1, 0
+    else:
+        raise "Coins not found"
+
+
+@view
+@external
+def get_gauge(_pool: address) -> address:
+    """
+    @notice Get the address of the liquidity gauge contract for a factory pool
+    @dev Returns `ZERO_ADDRESS` if a gauge has not been deployed
+    @param _pool Pool address
+    @return Implementation contract address
+    """
+    return self.pool_data[_pool].liquidity_gauge
+
+
+@view
+@external
+def get_eth_index(_pool: address) -> uint256:
+    """
+    @notice Get the index of WETH for a pool
+    @dev Returns MAX_UINT256 if WETH is not a coin in the pool
+    """
+    for i in range(2):
+        if self.pool_data[_pool].coins[i] == WETH:
+            return i
+    return MAX_UINT256
+
+
+@view
+@external
+def get_token(_pool: address) -> address:
+    """
+    @notice Get the address of the LP token of a pool
+    """
+    return self.pool_data[_pool].token
