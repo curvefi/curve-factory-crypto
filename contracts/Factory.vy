@@ -83,10 +83,6 @@ WETH: immutable(address)
 admin: public(address)
 future_admin: public(address)
 
-pool_list: public(address[4294967296])   # master list of pools
-pool_count: public(uint256)              # actual length of pool_list
-pool_data: HashMap[address, PoolArray]
-
 # fee receiver for plain pools
 fee_receiver: public(address)
 
@@ -99,6 +95,10 @@ gauge_implementation: public(address)
 # `bitwise_xor(convert(a, uint256), convert(b, uint256))`
 markets: HashMap[uint256, address[4294967296]]
 market_counts: HashMap[uint256, uint256]
+
+pool_count: public(uint256)              # actual length of pool_list
+pool_data: HashMap[address, PoolArray]
+pool_list: public(address[4294967296])   # master list of pools
 
 
 @external
