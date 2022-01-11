@@ -5,7 +5,6 @@
 @license MIT
 @notice Implementation contract for use with Curve Factory
 """
-
 from vyper.interfaces import ERC20
 
 implements: ERC20
@@ -16,17 +15,16 @@ interface CRV20:
     def rate() -> uint256: view
 
 interface Controller:
-    def period() -> int128: view
-    def period_write() -> int128: nonpayable
-    def period_timestamp(p: int128) -> uint256: view
-    def gauge_relative_weight(addr: address, time: uint256) -> uint256: view
-    def voting_escrow() -> address: view
-    def checkpoint(): nonpayable
     def checkpoint_gauge(addr: address): nonpayable
+    def gauge_relative_weight(addr: address, time: uint256) -> uint256: view
+
+interface ERC20Extended:
+    def symbol() -> String[32]: view
+
+interface Factory:
+    def admin() -> address: view
 
 interface Minter:
-    def token() -> address: view
-    def controller() -> address: view
     def minted(user: address, gauge: address) -> uint256: view
 
 interface VotingEscrow:
@@ -35,12 +33,6 @@ interface VotingEscrow:
 
 interface VotingEscrowBoost:
     def adjusted_balance_of(_account: address) -> uint256: view
-
-interface ERC20Extended:
-    def symbol() -> String[26]: view
-
-interface Factory:
-    def admin() -> address: view
 
 
 event Deposit:
@@ -104,7 +96,7 @@ totalSupply: public(uint256)
 allowance: public(HashMap[address, HashMap[address, uint256]])
 
 name: public(String[64])
-symbol: public(String[32])
+symbol: public(String[40])
 
 working_balances: public(HashMap[address, uint256])
 working_supply: public(uint256)
@@ -145,6 +137,7 @@ claim_data: HashMap[address, HashMap[address, uint256]]
 is_killed: public(bool)
 factory: public(address)
 
+
 @external
 def __init__():
     self.lp_token = 0x000000000000000000000000000000000000dEaD
@@ -161,7 +154,7 @@ def initialize(_lp_token: address):
     self.lp_token = _lp_token
     self.factory = msg.sender
 
-    symbol: String[26] = ERC20Extended(_lp_token).symbol()
+    symbol: String[32] = ERC20Extended(_lp_token).symbol()
     self.name = concat("Curve.fi ", symbol, " Gauge Deposit")
     self.symbol = concat(symbol, "-gauge")
 
