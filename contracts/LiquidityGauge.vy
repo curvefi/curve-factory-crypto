@@ -21,6 +21,9 @@ interface Controller:
 interface ERC20Extended:
     def symbol() -> String[32]: view
 
+interface ERC1271:
+    def isValidSignature(_hash: bytes32, _signature: Bytes[65]) -> bytes32: view
+
 interface Factory:
     def admin() -> address: view
 
@@ -81,6 +84,13 @@ MAX_REWARDS: constant(uint256) = 8
 TOKENLESS_PRODUCTION: constant(uint256) = 40
 WEEK: constant(uint256) = 604800
 
+# keccak256("isValidSignature(bytes32,bytes)")[:4] << 224
+ERC1271_MAGIC_VAL: constant(bytes32) = 0x1626ba7e00000000000000000000000000000000000000000000000000000000
+VERSION: constant(String[8]) = "v5.0.0"
+
+EIP712_TYPEHASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+PERMIT_TYPEHASH: constant(bytes32) = keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)")
+
 CRV: constant(address) = 0xD533a949740bb3306d119CC777fa900bA034cd52
 GAUGE_CONTROLLER: constant(address) = 0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB
 MINTER: constant(address) = 0xd061D61a4d941c39E5453435B6345Dc261C2fcE0
@@ -95,6 +105,10 @@ allowance: public(HashMap[address, HashMap[address, uint256]])
 
 name: public(String[64])
 symbol: public(String[40])
+
+# ERC2612
+DOMAIN_SEPARATOR: public(bytes32)
+nonces: public(HashMap[address, uint256])
 
 # Gauge
 factory: public(address)
@@ -467,6 +481,57 @@ def approve(_spender : address, _value : uint256) -> bool:
 
 
 @external
+def permit(
+    _owner: address,
+    _spender: address,
+    _value: uint256,
+    _deadline: uint256,
+    _v: uint8,
+    _r: bytes32,
+    _s: bytes32
+) -> bool:
+    """
+    @notice Approves spender by owner's signature to expend owner's tokens.
+        See https://eips.ethereum.org/EIPS/eip-2612.
+    @dev Inspired by https://github.com/yearn/yearn-vaults/blob/main/contracts/Vault.vy#L753-L793
+    @dev Supports smart contract wallets which implement ERC1271
+        https://eips.ethereum.org/EIPS/eip-1271
+    @param _owner The address which is a source of funds and has signed the Permit.
+    @param _spender The address which is allowed to spend the funds.
+    @param _value The amount of tokens to be spent.
+    @param _deadline The timestamp after which the Permit is no longer valid.
+    @param _v The bytes[64] of the valid secp256k1 signature of permit by owner
+    @param _r The bytes[0:32] of the valid secp256k1 signature of permit by owner
+    @param _s The bytes[32:64] of the valid secp256k1 signature of permit by owner
+    @return True, if transaction completes successfully
+    """
+    assert _owner != ZERO_ADDRESS
+    assert block.timestamp <= _deadline
+
+    nonce: uint256 = self.nonces[_owner]
+    digest: bytes32 = keccak256(
+        concat(
+            b"\x19\x01",
+            self.DOMAIN_SEPARATOR,
+            keccak256(_abi_encode(PERMIT_TYPEHASH, _owner, _spender, _value, nonce, _deadline))
+        )
+    )
+
+    if _owner.is_contract:
+        sig: Bytes[65] = concat(_abi_encode(_r, _s), slice(convert(_v, bytes32), 31, 1))
+        # reentrancy not a concern since this is a staticcall
+        assert ERC1271(_owner).isValidSignature(digest, sig) == ERC1271_MAGIC_VAL
+    else:
+        assert ecrecover(digest, convert(_v, uint256), convert(_r, uint256), convert(_s, uint256)) == _owner
+
+    self.allowance[_owner][_spender] = _value
+    self.nonces[_owner] = nonce + 1
+
+    log Approval(_owner, _spender, _value)
+    return True
+
+
+@external
 def increaseAllowance(_spender: address, _added_value: uint256) -> bool:
     """
     @notice Increase the allowance granted to `_spender` by the caller
@@ -714,6 +779,15 @@ def decimals() -> uint256:
     return 18
 
 
+@view
+@external
+def version() -> String[8]:
+    """
+    @notice Get the version of this gauge contract
+    """
+    return VERSION
+
+
 # Initializer
 
 
@@ -729,8 +803,14 @@ def initialize(_lp_token: address):
     self.factory = msg.sender
 
     symbol: String[32] = ERC20Extended(_lp_token).symbol()
-    self.name = concat("Curve.fi ", symbol, " Gauge Deposit")
+    name: String[64] = concat("Curve.fi ", symbol, " Gauge Deposit")
+
+    self.name = name
     self.symbol = concat(symbol, "-gauge")
+
+    self.DOMAIN_SEPARATOR = keccak256(
+        _abi_encode(EIP712_TYPEHASH, keccak256(name), keccak256(VERSION), chain.id, self)
+    )
 
     self.period_timestamp[0] = block.timestamp
     self.inflation_params = shift(CRV20(CRV).future_epoch_time_write(), 216) + CRV20(CRV).rate()
