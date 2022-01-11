@@ -143,26 +143,6 @@ def __init__():
     self.lp_token = 0x000000000000000000000000000000000000dEaD
 
 
-@external
-def initialize(_lp_token: address):
-    """
-    @notice Contract constructor
-    @param _lp_token Liquidity Pool contract address
-    """
-
-    assert self.lp_token == ZERO_ADDRESS
-    self.lp_token = _lp_token
-    self.factory = msg.sender
-
-    symbol: String[32] = ERC20Extended(_lp_token).symbol()
-    self.name = concat("Curve.fi ", symbol, " Gauge Deposit")
-    self.symbol = concat(symbol, "-gauge")
-
-    self.period_timestamp[0] = block.timestamp
-    self.inflation_rate = CRV20(CRV).rate()
-    self.future_epoch_time = CRV20(CRV).future_epoch_time_write()
-
-
 @view
 @external
 def decimals() -> uint256:
@@ -680,3 +660,23 @@ def set_killed(_is_killed: bool):
     assert msg.sender == Factory(self.factory).admin()  # dev: only owner
 
     self.is_killed = _is_killed
+
+
+@external
+def initialize(_lp_token: address):
+    """
+    @notice Contract constructor
+    @param _lp_token Liquidity Pool contract address
+    """
+    assert self.lp_token == ZERO_ADDRESS
+
+    self.lp_token = _lp_token
+    self.factory = msg.sender
+
+    symbol: String[32] = ERC20Extended(_lp_token).symbol()
+    self.name = concat("Curve.fi ", symbol, " Gauge Deposit")
+    self.symbol = concat(symbol, "-gauge")
+
+    self.period_timestamp[0] = block.timestamp
+    self.inflation_rate = CRV20(CRV).rate()
+    self.future_epoch_time = CRV20(CRV).future_epoch_time_write()
