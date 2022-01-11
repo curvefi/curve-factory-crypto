@@ -102,8 +102,8 @@ lp_token: public(address)
 
 is_killed: public(bool)
 
-future_epoch_time: public(uint256)
-inflation_rate: public(uint256)
+# [future_epoch_time uint40][inflation_rate uint216]
+inflation_params: uint256
 
 # For tracking external rewards
 reward_count: public(uint256)
@@ -160,17 +160,20 @@ def _checkpoint(addr: address):
     _period: int128 = self.period
     _period_time: uint256 = self.period_timestamp[_period]
     _integrate_inv_supply: uint256 = self.integrate_inv_supply[_period]
-    rate: uint256 = self.inflation_rate
+
+    inflation_params: uint256 = self.inflation_params
+    rate: uint256 = inflation_params % 2 ** 216
+    prev_future_epoch: uint256 = shift(inflation_params, -216)
     new_rate: uint256 = rate
-    prev_future_epoch: uint256 = self.future_epoch_time
+
     if prev_future_epoch >= _period_time:
-        self.future_epoch_time = CRV20(CRV).future_epoch_time_write()
         new_rate = CRV20(CRV).rate()
-        self.inflation_rate = new_rate
+        self.inflation_params = shift(CRV20(CRV).future_epoch_time_write(), 216) + new_rate
 
     if self.is_killed:
         # Stop distributing inflation as soon as killed
         rate = 0
+        new_rate = 0  # prevent distribution when crossing epochs
 
     # Update integral of 1/supply
     if block.timestamp > _period_time:
@@ -684,6 +687,24 @@ def integrate_checkpoint() -> uint256:
 
 @view
 @external
+def future_epoch_time() -> uint256:
+    """
+    @notice Get the locally stored CRV future epoch start time
+    """
+    return shift(self.inflation_params, -216)
+
+
+@view
+@external
+def inflation_rate() -> uint256:
+    """
+    @notice Get the locally stored CRV inflation rate
+    """
+    return self.inflation_params % 2 ** 216
+
+
+@view
+@external
 def decimals() -> uint256:
     """
     @notice Get the number of decimals for this token
@@ -712,5 +733,4 @@ def initialize(_lp_token: address):
     self.symbol = concat(symbol, "-gauge")
 
     self.period_timestamp[0] = block.timestamp
-    self.inflation_rate = CRV20(CRV).rate()
-    self.future_epoch_time = CRV20(CRV).future_epoch_time_write()
+    self.inflation_params = shift(CRV20(CRV).future_epoch_time_write(), 216) + CRV20(CRV).rate()
