@@ -76,21 +76,19 @@ struct Reward:
     integral: uint256
 
 
+CLAIM_FREQUENCY: constant(uint256) = 3600
 MAX_REWARDS: constant(uint256) = 8
 TOKENLESS_PRODUCTION: constant(uint256) = 40
 WEEK: constant(uint256) = 604800
-CLAIM_FREQUENCY: constant(uint256) = 3600
 
-MINTER: constant(address) = 0xd061D61a4d941c39E5453435B6345Dc261C2fcE0
 CRV: constant(address) = 0xD533a949740bb3306d119CC777fa900bA034cd52
-VOTING_ESCROW: constant(address) = 0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2
 GAUGE_CONTROLLER: constant(address) = 0x2F50D538606Fa9EDD2B11E2446BEb18C9D5846bB
+MINTER: constant(address) = 0xd061D61a4d941c39E5453435B6345Dc261C2fcE0
 VEBOOST_PROXY: constant(address) = 0x8E0c00ed546602fD9927DF742bbAbF726D5B0d16
+VOTING_ESCROW: constant(address) = 0x5f3b5DfEb7B28CDbD7FAba78963EE202a494e2A2
 
 
-lp_token: public(address)
-future_epoch_time: public(uint256)
-
+# ERC20
 balanceOf: public(HashMap[address, uint256])
 totalSupply: public(uint256)
 allowance: public(HashMap[address, HashMap[address, uint256]])
@@ -98,31 +96,17 @@ allowance: public(HashMap[address, HashMap[address, uint256]])
 name: public(String[64])
 symbol: public(String[40])
 
-working_balances: public(HashMap[address, uint256])
-working_supply: public(uint256)
+# Gauge
+factory: public(address)
+lp_token: public(address)
 
-# The goal is to be able to calculate ∫(rate * balance / totalSupply dt) from 0 till checkpoint
-# All values are kept in units of being multiplied by 1e18
-period: public(int128)
-period_timestamp: public(uint256[100000000000000000000000000000])
+is_killed: public(bool)
 
-# 1e18 * ∫(rate(t) / totalSupply(t) dt) from 0 till checkpoint
-integrate_inv_supply: public(uint256[100000000000000000000000000000])  # bump epoch when rate() changes
-
-# 1e18 * ∫(rate(t) / totalSupply(t) dt) from (last_action) till checkpoint
-integrate_inv_supply_of: public(HashMap[address, uint256])
-integrate_checkpoint_of: public(HashMap[address, uint256])
-
-# ∫(balance * rate(t) / totalSupply(t) dt) from 0 till checkpoint
-# Units: rate * t = already number of coins per address to issue
-integrate_fraction: public(HashMap[address, uint256])
-
+future_epoch_time: public(uint256)
 inflation_rate: public(uint256)
 
 # For tracking external rewards
 reward_count: public(uint256)
-reward_tokens: public(address[MAX_REWARDS])
-
 reward_data: public(HashMap[address, Reward])
 
 # claimant -> default reward receiver
@@ -134,12 +118,32 @@ reward_integral_for: public(HashMap[address, HashMap[address, uint256]])
 # user -> [uint128 claimable amount][uint128 claimed amount]
 claim_data: HashMap[address, HashMap[address, uint256]]
 
-is_killed: public(bool)
-factory: public(address)
+working_balances: public(HashMap[address, uint256])
+working_supply: public(uint256)
+
+# 1e18 * ∫(rate(t) / totalSupply(t) dt) from (last_action) till checkpoint
+integrate_inv_supply_of: public(HashMap[address, uint256])
+integrate_checkpoint_of: public(HashMap[address, uint256])
+
+# ∫(balance * rate(t) / totalSupply(t) dt) from 0 till checkpoint
+# Units: rate * t = already number of coins per address to issue
+integrate_fraction: public(HashMap[address, uint256])
+
+# The goal is to be able to calculate ∫(rate * balance / totalSupply dt) from 0 till checkpoint
+# All values are kept in units of being multiplied by 1e18
+period: public(int128)
+
+# array of reward tokens
+reward_tokens: public(address[MAX_REWARDS])
+
+period_timestamp: public(uint256[100000000000000000000000000000])
+# 1e18 * ∫(rate(t) / totalSupply(t) dt) from 0 till checkpoint
+integrate_inv_supply: public(uint256[100000000000000000000000000000])  # bump epoch when rate() changes
 
 
 @external
 def __init__():
+    # prevent initialization of implementation
     self.lp_token = 0x000000000000000000000000000000000000dEaD
 
 
