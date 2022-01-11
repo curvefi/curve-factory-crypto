@@ -44,7 +44,7 @@ event Withdraw:
     value: uint256
 
 event UpdateLiquidityLimit:
-    user: address
+    user: indexed(address)
     original_balance: uint256
     original_supply: uint256
     working_balance: uint256
