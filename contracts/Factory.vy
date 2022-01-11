@@ -54,6 +54,26 @@ event LiquidityGaugeDeployed:
     token: address
     gauge: address
 
+event UpdateFeeReceiver:
+    _old_fee_receiver: address
+    _new_fee_receiver: address
+
+event UpdatePoolImplementation:
+    _old_pool_implementation: address
+    _new_pool_implementation: address
+
+event UpdateTokenImplementation:
+    _old_token_implementation: address
+    _new_token_implementation: address
+
+event UpdateGaugeImplementation:
+    _old_gauge_implementation: address
+    _new_gauge_implementation: address
+
+event TransferOwnership:
+    _old_owner: address
+    _new_owner: address
+
 
 struct PoolArray:
     token: address
@@ -102,20 +122,30 @@ pool_list: public(address[4294967296])   # master list of pools
 
 
 @external
-def __init__(_fee_receiver: address,
-             _pool_implementation: address,
-             _token_implementation: address,
-             _gauge_implementation: address,
-             _weth: address):
-    self.admin = msg.sender
+def __init__(
+    _fee_receiver: address,
+    _pool_implementation: address
+    _token_implementation: address, 
+    _gauge_implementation: address,
+    _weth: address
+):
     self.fee_receiver = _fee_receiver
     self.pool_implementation = _pool_implementation
     self.token_implementation = _token_implementation
     self.gauge_implementation = _gauge_implementation
+
+    self.admin = msg.sender
     WETH = _weth
+
+    log UpdateFeeReceiver(ZERO_ADDRESS, _fee_receiver)
+    log UpdatePoolImplementation(ZERO_ADDRESS, _pool_implementation)
+    log UpdateTokenImplementation(ZERO_ADDRESS, _token_implementation)
+    log UpdateGaugeImplementation(ZERO_ADDRESS, _gauge_implementation)
+    log TransferOwnership(ZERO_ADDRESS, msg.sender)
 
 
 # <--- Factory Getters --->
+
 
 @view
 @external
@@ -338,9 +368,53 @@ def deploy_gauge(_pool: address) -> address:
 
 
 @external
+def set_fee_receiver(_fee_receiver: address):
+    """
+    @notice Set fee receiver
+    @param _fee_receiver Address that fees are sent to
+    """
+    assert msg.sender == self.admin  # dev: admin only
+
+    log UpdateFeeReceiver(self.fee_receiver, _fee_receiver)
+    self.fee_receiver = _fee_receiver
+
+
+@external
+def set_pool_implementation(_pool_implementation: address):
+    """
+    @notice Set pool implementation
+    @dev Set to ZERO_ADDRESS to prevent deployment of new pools
+    @param _pool_implementation Address of the new pool implementation
+    """
+    assert msg.sender == self.admin  # dev: admin only
+
+    log UpdatePoolImplementation(self.pool_implementation, _pool_implementation)
+    self.pool_implementation = _pool_implementation
+
+
+@external
+def set_token_implementation(_token_implementation: address):
+    """
+    @notice Set token implementation
+    @dev Set to ZERO_ADDRESS to prevent deployment of new pools
+    @param _token_implementation Address of the new token implementation
+    """
+    assert msg.sender == self.admin  # dev: admin only
+
+    log UpdateTokenImplementation(self.token_implementation, _token_implementation)
+    self.token_implementation = _token_implementation
+
+
+@external
 def set_gauge_implementation(_gauge_implementation: address):
+    """
+    @notice Set gauge implementation
+    @dev Set to ZERO_ADDRESS to prevent deployment of new gauges
+    @param _gauge_implementation Address of the new token implementation
+    """
     assert msg.sender == self.admin  # dev: admin-only function
 
+    log UpdateGaugeImplementation(self.gauge_implementation, _gauge_implementation)
     self.gauge_implementation = _gauge_implementation
 
 
@@ -361,18 +435,7 @@ def accept_transfer_ownership():
     @notice Accept a pending ownership transfer
     @dev Only callable by the new owner
     """
-    _admin: address = self.future_admin
-    assert msg.sender == _admin  # dev: future admin only
+    assert msg.sender == self.future_admin  # dev: future admin only
 
-    self.admin = _admin
-    self.future_admin = ZERO_ADDRESS
-
-
-@external
-def set_fee_receiver(_fee_receiver: address):
-    """
-    @notice Set fee receiver for base and plain pools
-    @param _fee_receiver Address that fees are sent to
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    self.fee_receiver = _fee_receiver
+    log TransferOwnership(self.admin, msg.sender)
+    self.admin = msg.sender
