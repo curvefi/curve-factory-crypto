@@ -6,36 +6,8 @@
 @notice Permissionless pool deployer and registry
 """
 
-struct PoolArray:
-    token: address
-    liquidity_gauge: address
-    coins: address[2]
-    decimals: uint256[2]
-
-interface ERC20:
-    def balanceOf(_addr: address) -> uint256: view
-    def decimals() -> uint256: view
-    def totalSupply() -> uint256: view
-    def approve(_spender: address, _amount: uint256): nonpayable
-    def initialize(_name: String[64], _symbol: String[32], _pool: address): nonpayable
 
 interface CryptoPool:
-    def A() -> uint256: view
-    def gamma() -> uint256: view
-    def mid_fee() -> uint256: view
-    def out_fee() -> uint256: view
-    def fee() -> uint256: view
-    def allowed_extra_profit() -> uint256: view
-    def fee_gamma() -> uint256: view
-    def adjustment_step() -> uint256: view
-    def admin_fee() -> uint256: view
-    def ma_half_time() -> uint256: view
-    def price_scale() -> uint256: view
-    def price_oracle() -> uint256: view
-    def last_prices() -> uint256: view
-    def token() -> address: view
-    def coins(i: uint256) -> address: view
-    def get_virtual_price() -> uint256: view
     def balances(i: uint256) -> uint256: view
     def initialize(
         A: uint256,
@@ -51,13 +23,16 @@ interface CryptoPool:
         _token: address,
         _coins: address[2]
     ): nonpayable
-    def exchange(
-        i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-        use_eth: bool, receiver: address, cb: Bytes[4]
-    ) -> uint256: payable
+
+interface ERC20:
+    def decimals() -> uint256: view
 
 interface LiquidityGauge:
     def initialize(_lp_token: address): nonpayable
+
+interface Token:
+    def initialize(_name: String[64], _symbol: String[32], _pool: address): nonpayable
+
 
 event CryptoPoolDeployed:
     token: address
@@ -78,6 +53,13 @@ event LiquidityGaugeDeployed:
     pool: address
     token: address
     gauge: address
+
+
+struct PoolArray:
+    token: address
+    liquidity_gauge: address
+    coins: address[2]
+    decimals: uint256[2]
 
 
 admin: public(address)
@@ -294,7 +276,7 @@ def deploy_pool(
     token: address = create_forwarder_to(self.token_implementation)
     pool: address = create_forwarder_to(self.pool_implementation)
 
-    ERC20(token).initialize(name, symbol, pool)
+    Token(token).initialize(name, symbol, pool)
     CryptoPool(pool).initialize(
         A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
         adjustment_step, admin_fee, ma_half_time, initial_price,
