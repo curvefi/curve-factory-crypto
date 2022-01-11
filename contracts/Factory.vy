@@ -62,6 +62,24 @@ struct PoolArray:
     decimals: uint256[2]
 
 
+N_COINS: constant(int128) = 2
+A_MULTIPLIER: constant(uint256) = 10000
+
+# Limits
+MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
+MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
+MAX_FEE: constant(uint256) = 10 * 10 ** 9
+
+MIN_GAMMA: constant(uint256) = 10 ** 10
+MAX_GAMMA: constant(uint256) = 2 * 10 ** 16
+
+MIN_A: constant(uint256) = N_COINS ** N_COINS * A_MULTIPLIER / 10
+MAX_A: constant(uint256) = N_COINS ** N_COINS * A_MULTIPLIER * 100000
+
+
+WETH: immutable(address)
+
+
 admin: public(address)
 future_admin: public(address)
 
@@ -81,22 +99,6 @@ gauge_implementation: public(address)
 # `bitwise_xor(convert(a, uint256), convert(b, uint256))`
 markets: HashMap[uint256, address[4294967296]]
 market_counts: HashMap[uint256, uint256]
-
-WETH: immutable(address)
-
-N_COINS: constant(int128) = 2
-A_MULTIPLIER: constant(uint256) = 10000
-
-# Limits
-MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
-MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
-MAX_FEE: constant(uint256) = 10 * 10 ** 9
-
-MIN_GAMMA: constant(uint256) = 10**10
-MAX_GAMMA: constant(uint256) = 2 * 10**16
-
-MIN_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER / 10
-MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
 
 
 @external
