@@ -215,17 +215,6 @@ def deploy_pool(
     self.pool_data[pool].decimals = decimals
     self.pool_data[pool].coins = _coins
 
-    for i in range(2):
-        coin: address = _coins[i]
-        raw_call(
-            coin,
-            concat(
-                method_id("approve(address,uint256)"),
-                convert(pool, bytes32),
-                convert(MAX_UINT256, bytes32)
-            )
-        )
-
     key: uint256 = bitwise_xor(convert(_coins[0], uint256), convert(_coins[1], uint256))
     length = self.market_counts[key]
     self.markets[key][length] = pool
