@@ -83,9 +83,31 @@ event ClaimAdminFee:
     tokens: uint256
 
 
+ADMIN_ACTIONS_DELAY: constant(uint256) = 3 * 86400
+MIN_RAMP_TIME: constant(uint256) = 86400
+
+MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
+MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
+MAX_FEE: constant(uint256) = 10 * 10 ** 9
+MAX_A_CHANGE: constant(uint256) = 10
+NOISE_FEE: constant(uint256) = 10**5  # 0.1 bps
+
+MIN_GAMMA: constant(uint256) = 10**10
+MAX_GAMMA: constant(uint256) = 2 * 10**16
+
+MIN_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER / 10
+MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
+
+EXP_PRECISION: constant(uint256) = 10**10
+
 N_COINS: constant(int128) = 2
 PRECISION: constant(uint256) = 10 ** 18  # The precision to convert to
 A_MULTIPLIER: constant(uint256) = 10000
+
+
+# Implementation can be changed by changing this constant
+WETH20: immutable(address)
+
 
 token: public(address)
 coins: public(address[N_COINS])
@@ -132,32 +154,12 @@ not_adjusted: bool
 
 admin_actions_deadline: public(uint256)
 
-ADMIN_ACTIONS_DELAY: constant(uint256) = 3 * 86400
-MIN_RAMP_TIME: constant(uint256) = 86400
-
-MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
-MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
-MAX_FEE: constant(uint256) = 10 * 10 ** 9
-MAX_A_CHANGE: constant(uint256) = 10
-NOISE_FEE: constant(uint256) = 10**5  # 0.1 bps
-
-MIN_GAMMA: constant(uint256) = 10**10
-MAX_GAMMA: constant(uint256) = 2 * 10**16
-
-MIN_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER / 10
-MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
-
 # This must be changed for different N_COINS
 # For example:
 # N_COINS = 3 -> 1  (10**18 -> 10**18)
 # N_COINS = 4 -> 10**8  (10**18 -> 10**10)
 # PRICE_PRECISION_MUL: constant(uint256) = 1
 PRECISIONS: uint256  # packed
-
-EXP_PRECISION: constant(uint256) = 10**10
-
-# Implementation can be changed by changing this constant
-WETH20: immutable(address)
 
 
 @external
