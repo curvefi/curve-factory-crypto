@@ -223,14 +223,10 @@ def __default__():
 def _safe_transfer(coin: address, _to: address, _amount: uint256):
     response: Bytes[32] = raw_call(
         coin,
-        concat(
-            method_id("transfer(address,uint256)"),
-            convert(_to, bytes32),
-            convert(_amount, bytes32),
-        ),
+        _abi_encode(_to, _amount, method_id=method_id("transfer(address,uint256)")),
         max_outsize=32,
     )
-    if len(response) > 0:
+    if len(response) != 0:
         assert convert(response, bool)
 
 
@@ -238,15 +234,12 @@ def _safe_transfer(coin: address, _to: address, _amount: uint256):
 def _safe_transfer_from(coin: address, _from: address, _to: address, _amount: uint256):
     response: Bytes[32] = raw_call(
         coin,
-        concat(
-            method_id("transferFrom(address,address,uint256)"),
-            convert(_from, bytes32),
-            convert(_to, bytes32),
-            convert(_amount, bytes32),
+        _abi_encode(
+            _from, _to, _amount, method_id=method_id("transferFrom(address,address,uint256)")
         ),
         max_outsize=32,
     )
-    if len(response) > 0:
+    if len(response) != 0:
         assert convert(response, bool)  # dev: failed transfer
 
 
@@ -813,15 +806,8 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
             self._safe_transfer_from(in_coin, sender, self, dx)
         else:
             b: uint256 = ERC20(in_coin).balanceOf(self)
-            raw_call(callbacker,
-                     concat(
-                        callback_sig,
-                        convert(sender, bytes32),
-                        convert(receiver, bytes32),
-                        convert(in_coin, bytes32),
-                        convert(dx, bytes32),
-                        convert(dy, bytes32)
-                     )
+            raw_call(
+                callbacker, concat(callback_sig, _abi_encode(sender, receiver, in_coin, dx, dy))
             )
             assert ERC20(in_coin).balanceOf(self) - b == dx  # dev: callback didn't give us coins
         if in_coin == WETH20:
