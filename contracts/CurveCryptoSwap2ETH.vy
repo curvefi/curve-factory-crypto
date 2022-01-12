@@ -174,6 +174,8 @@ def __default__():
     pass
 
 
+# Internal Functions
+
 @internal
 def _safe_transfer(coin: address, _to: address, _amount: uint256):
     response: Bytes[32] = raw_call(
@@ -205,6 +207,61 @@ def _get_precisions() -> uint256[2]:
     p1: uint256 = 10 ** shift(p0, -8)
     p0 = 10 ** bitwise_and(p0, 255)
     return [p0, p1]
+
+
+@internal
+@view
+def xp() -> uint256[N_COINS]:
+    precisions: uint256[2] = self._get_precisions()
+    return [self.balances[0] * precisions[0],
+            self.balances[1] * precisions[1] * self.price_scale / PRECISION]
+
+
+@view
+@internal
+def _A_gamma() -> uint256[2]:
+    t1: uint256 = self.future_A_gamma_time
+
+    A_gamma_1: uint256 = self.future_A_gamma
+    gamma1: uint256 = bitwise_and(A_gamma_1, 2**128-1)
+    A1: uint256 = shift(A_gamma_1, -128)
+
+    if block.timestamp < t1:
+        # handle ramping up and down of A
+        A_gamma_0: uint256 = self.initial_A_gamma
+        t0: uint256 = self.initial_A_gamma_time
+
+        # Less readable but more compact way of writing and converting to uint256
+        # gamma0: uint256 = bitwise_and(A_gamma_0, 2**128-1)
+        # A0: uint256 = shift(A_gamma_0, -128)
+        # A1 = A0 + (A1 - A0) * (block.timestamp - t0) / (t1 - t0)
+        # gamma1 = gamma0 + (gamma1 - gamma0) * (block.timestamp - t0) / (t1 - t0)
+
+        t1 -= t0
+        t0 = block.timestamp - t0
+        t2: uint256 = t1 - t0
+
+        A1 = (shift(A_gamma_0, -128) * t2 + A1 * t0) / t1
+        gamma1 = (bitwise_and(A_gamma_0, 2**128-1) * t2 + gamma1 * t0) / t1
+
+    return [A1, gamma1]
+
+
+@internal
+@view
+def _fee(xp: uint256[N_COINS]) -> uint256:
+    """
+    f = fee_gamma / (fee_gamma + (1 - K))
+    where
+    K = prod(x) / (sum(x) / N)**N
+    (all normalized to 1e18)
+    """
+    fee_gamma: uint256 = self.fee_gamma
+    f: uint256 = xp[0] + xp[1]  # sum
+    f = fee_gamma * 10**18 / (
+        fee_gamma + 10**18 - (10**18 * N_COINS**N_COINS) * xp[0] / f * xp[1] / f
+    )
+    return (self.mid_fee * f + self.out_fee * (10**18 - f)) / 10**18
 
 
 ### Math functions
@@ -433,88 +490,9 @@ def halfpow(power: uint256) -> uint256:
 
 @internal
 @view
-def xp() -> uint256[N_COINS]:
-    precisions: uint256[2] = self._get_precisions()
-    return [self.balances[0] * precisions[0],
-            self.balances[1] * precisions[1] * self.price_scale / PRECISION]
-
-
-@view
-@internal
-def _A_gamma() -> uint256[2]:
-    t1: uint256 = self.future_A_gamma_time
-
-    A_gamma_1: uint256 = self.future_A_gamma
-    gamma1: uint256 = bitwise_and(A_gamma_1, 2**128-1)
-    A1: uint256 = shift(A_gamma_1, -128)
-
-    if block.timestamp < t1:
-        # handle ramping up and down of A
-        A_gamma_0: uint256 = self.initial_A_gamma
-        t0: uint256 = self.initial_A_gamma_time
-
-        # Less readable but more compact way of writing and converting to uint256
-        # gamma0: uint256 = bitwise_and(A_gamma_0, 2**128-1)
-        # A0: uint256 = shift(A_gamma_0, -128)
-        # A1 = A0 + (A1 - A0) * (block.timestamp - t0) / (t1 - t0)
-        # gamma1 = gamma0 + (gamma1 - gamma0) * (block.timestamp - t0) / (t1 - t0)
-
-        t1 -= t0
-        t0 = block.timestamp - t0
-        t2: uint256 = t1 - t0
-
-        A1 = (shift(A_gamma_0, -128) * t2 + A1 * t0) / t1
-        gamma1 = (bitwise_and(A_gamma_0, 2**128-1) * t2 + gamma1 * t0) / t1
-
-    return [A1, gamma1]
-
-
-@view
-@external
-def A() -> uint256:
-    return self._A_gamma()[0]
-
-
-@view
-@external
-def gamma() -> uint256:
-    return self._A_gamma()[1]
-
-
-@internal
-@view
-def _fee(xp: uint256[N_COINS]) -> uint256:
-    """
-    f = fee_gamma / (fee_gamma + (1 - K))
-    where
-    K = prod(x) / (sum(x) / N)**N
-    (all normalized to 1e18)
-    """
-    fee_gamma: uint256 = self.fee_gamma
-    f: uint256 = xp[0] + xp[1]  # sum
-    f = fee_gamma * 10**18 / (
-        fee_gamma + 10**18 - (10**18 * N_COINS**N_COINS) * xp[0] / f * xp[1] / f
-    )
-    return (self.mid_fee * f + self.out_fee * (10**18 - f)) / 10**18
-
-
-@external
-@view
-def fee() -> uint256:
-    return self._fee(self.xp())
-
-
-@internal
-@view
 def get_xcp(D: uint256) -> uint256:
     x: uint256[N_COINS] = [D / N_COINS, D * PRECISION / (self.price_scale * N_COINS)]
     return self.geometric_mean(x, True)
-
-
-@external
-@view
-def get_virtual_price() -> uint256:
-    return 10**18 * self.get_xcp(self.D) / CurveToken(self.token).totalSupply()
 
 
 @internal
@@ -571,12 +549,6 @@ def internal_price_oracle() -> uint256:
 
     else:
         return price_oracle
-
-
-@external
-@view
-def price_oracle() -> uint256:
-    return self.internal_price_oracle()
 
 
 @internal
@@ -797,6 +769,127 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     return dy
 
 
+@view
+@internal
+def _calc_token_fee(amounts: uint256[N_COINS], xp: uint256[N_COINS]) -> uint256:
+    # fee = sum(amounts_i - avg(amounts)) * fee' / sum(amounts)
+    fee: uint256 = self._fee(xp) * N_COINS / (4 * (N_COINS-1))
+    S: uint256 = 0
+    for _x in amounts:
+        S += _x
+    avg: uint256 = S / N_COINS
+    Sdiff: uint256 = 0
+    for _x in amounts:
+        if _x > avg:
+            Sdiff += _x - avg
+        else:
+            Sdiff += avg - _x
+    return fee * Sdiff / S + NOISE_FEE
+
+
+@internal
+@view
+def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint256, update_D: bool,
+                            calc_price: bool) -> (uint256, uint256, uint256, uint256[N_COINS]):
+    token_supply: uint256 = CurveToken(self.token).totalSupply()
+    assert token_amount <= token_supply  # dev: token amount more than supply
+    assert i < N_COINS  # dev: coin out of range
+
+    xx: uint256[N_COINS] = self.balances
+    D0: uint256 = 0
+    precisions: uint256[2] = self._get_precisions()
+
+    price_scale_i: uint256 = self.price_scale * precisions[1]
+    xp: uint256[N_COINS] = [xx[0] * precisions[0], xx[1] * price_scale_i / PRECISION]
+    if i == 0:
+        price_scale_i = PRECISION * precisions[0]
+
+    if update_D:
+        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
+    else:
+        D0 = self.D
+
+    D: uint256 = D0
+
+    # Charge the fee on D, not on y, e.g. reducing invariant LESS than charging the user
+    fee: uint256 = self._fee(xp)
+    dD: uint256 = token_amount * D / token_supply
+    D -= (dD - (fee * dD / (2 * 10**10) + 1))
+    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, i)
+    dy: uint256 = (xp[i] - y) * PRECISION / price_scale_i
+    xp[i] = y
+
+    # Price calc
+    p: uint256 = 0
+    if calc_price and dy > 10**5 and token_amount > 10**5:
+        # p_i = dD / D0 * sum'(p_k * x_k) / (dy - dD / D0 * y0)
+        S: uint256 = 0
+        precision: uint256 = precisions[0]
+        if i == 1:
+            S = xx[0] * precisions[0]
+            precision = precisions[1]
+        else:
+            S = xx[1] * precisions[1]
+        S = S * dD / D0
+        p = S * PRECISION / (dy * precision - dD * xx[i] * precision / D0)
+        if i == 0:
+            p = (10**18)**2 / p
+
+    return dy, p, D, xp
+
+
+@internal
+@pure
+def sqrt_int(x: uint256) -> uint256:
+    """
+    Originating from: https://github.com/vyperlang/vyper/issues/1266
+    """
+
+    if x == 0:
+        return 0
+
+    z: uint256 = (x + 10**18) / 2
+    y: uint256 = x
+
+    for i in range(256):
+        if z == y:
+            return y
+        y = z
+        z = (x * 10**18 / z + z) / 2
+
+    raise "Did not converge"
+
+
+@view
+@external
+def A() -> uint256:
+    return self._A_gamma()[0]
+
+
+@view
+@external
+def gamma() -> uint256:
+    return self._A_gamma()[1]
+
+
+@external
+@view
+def fee() -> uint256:
+    return self._fee(self.xp())
+
+
+@external
+@view
+def get_virtual_price() -> uint256:
+    return 10**18 * self.get_xcp(self.D) / CurveToken(self.token).totalSupply()
+
+
+@external
+@view
+def price_oracle() -> uint256:
+    return self.internal_price_oracle()
+
+
 @payable
 @external
 @nonreentrant('lock')
@@ -858,24 +951,6 @@ def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
     dy -= self._fee(xp) * dy / 10**10
 
     return dy
-
-
-@view
-@internal
-def _calc_token_fee(amounts: uint256[N_COINS], xp: uint256[N_COINS]) -> uint256:
-    # fee = sum(amounts_i - avg(amounts)) * fee' / sum(amounts)
-    fee: uint256 = self._fee(xp) * N_COINS / (4 * (N_COINS-1))
-    S: uint256 = 0
-    for _x in amounts:
-        S += _x
-    avg: uint256 = S / N_COINS
-    Sdiff: uint256 = 0
-    for _x in amounts:
-        if _x > avg:
-            Sdiff += _x - avg
-        else:
-            Sdiff += avg - _x
-    return fee * Sdiff / S + NOISE_FEE
 
 
 @payable
@@ -1034,57 +1109,6 @@ def calc_token_amount(amounts: uint256[N_COINS]) -> uint256:
     d_token: uint256 = token_supply * D / D0 - token_supply
     d_token -= self._calc_token_fee(amountsp, xp) * d_token / 10**10 + 1
     return d_token
-
-
-@internal
-@view
-def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint256, update_D: bool,
-                            calc_price: bool) -> (uint256, uint256, uint256, uint256[N_COINS]):
-    token_supply: uint256 = CurveToken(self.token).totalSupply()
-    assert token_amount <= token_supply  # dev: token amount more than supply
-    assert i < N_COINS  # dev: coin out of range
-
-    xx: uint256[N_COINS] = self.balances
-    D0: uint256 = 0
-    precisions: uint256[2] = self._get_precisions()
-
-    price_scale_i: uint256 = self.price_scale * precisions[1]
-    xp: uint256[N_COINS] = [xx[0] * precisions[0], xx[1] * price_scale_i / PRECISION]
-    if i == 0:
-        price_scale_i = PRECISION * precisions[0]
-
-    if update_D:
-        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
-    else:
-        D0 = self.D
-
-    D: uint256 = D0
-
-    # Charge the fee on D, not on y, e.g. reducing invariant LESS than charging the user
-    fee: uint256 = self._fee(xp)
-    dD: uint256 = token_amount * D / token_supply
-    D -= (dD - (fee * dD / (2 * 10**10) + 1))
-    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, i)
-    dy: uint256 = (xp[i] - y) * PRECISION / price_scale_i
-    xp[i] = y
-
-    # Price calc
-    p: uint256 = 0
-    if calc_price and dy > 10**5 and token_amount > 10**5:
-        # p_i = dD / D0 * sum'(p_k * x_k) / (dy - dD / D0 * y0)
-        S: uint256 = 0
-        precision: uint256 = precisions[0]
-        if i == 1:
-            S = xx[0] * precisions[0]
-            precision = precisions[1]
-        else:
-            S = xx[1] * precisions[1]
-        S = S * dD / D0
-        p = S * PRECISION / (dy * precision - dD * xx[i] * precision / D0)
-        if i == 0:
-            p = (10**18)**2 / p
-
-    return dy, p, D, xp
 
 
 @view
@@ -1288,28 +1312,6 @@ def revert_new_parameters():
     assert msg.sender == Factory(self.factory).admin()  # dev: only owner
 
     self.admin_actions_deadline = 0
-
-
-@internal
-@pure
-def sqrt_int(x: uint256) -> uint256:
-    """
-    Originating from: https://github.com/vyperlang/vyper/issues/1266
-    """
-
-    if x == 0:
-        return 0
-
-    z: uint256 = (x + 10**18) / 2
-    y: uint256 = x
-
-    for i in range(256):
-        if z == y:
-            return y
-        y = z
-        z = (x * 10**18 / z + z) / 2
-
-    raise "Did not converge"
 
 
 @external
