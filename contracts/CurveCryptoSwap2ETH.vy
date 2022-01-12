@@ -183,7 +183,8 @@ def initialize(
     ma_half_time: uint256,
     initial_price: uint256,
     _token: address,
-    _coins: address[N_COINS]
+    _coins: address[N_COINS],
+    _precisions: uint256,
 ):
     assert self.mid_fee == 0  # dev: check that we call it from factory
 
@@ -213,8 +214,7 @@ def initialize(
 
     self.token = _token
     self.coins = _coins
-    self.PRECISIONS = convert(18 - ERC20(_coins[0]).decimals(), uint256) +\
-                      shift(convert(18 - ERC20(_coins[1]).decimals(), uint256), 8)
+    self.PRECISIONS = _precisions
 
 
 @payable

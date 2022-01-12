@@ -22,7 +22,7 @@ interface CryptoPool:
         initial_price: uint256,
         _token: address,
         _coins: address[2],
-        decimals: uint256[2]
+        _precisions: uint256
     ): nonpayable
 
 interface ERC20:
@@ -189,13 +189,15 @@ def deploy_pool(
     assert ma_half_time > 0
     assert initial_price > 10**6
     assert initial_price < 10**30
+    assert _coins[0] != _coins[1], "Duplicate coins"
 
     decimals: uint256[2] = empty(uint256[2])
     for i in range(2):
         d: uint256 = ERC20(_coins[i]).decimals()
         assert d < 19, "Max 18 decimals for coins"
         decimals[i] = d
-    assert _coins[0] != _coins[1], "Duplicate coins"
+    precisions: uint256 = (18 - decimals[0]) + shift(18 - decimals[1], 8)
+
 
     name: String[64] = concat("Curve.fi Factory Crypto Pool: ", _name)
     symbol: String[32] = concat(_symbol, "-f")
@@ -207,7 +209,7 @@ def deploy_pool(
     CryptoPool(pool).initialize(
         A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
         adjustment_step, admin_fee, ma_half_time, initial_price,
-        token, _coins, decimals)
+        token, _coins, precisions)
 
     length: uint256 = self.pool_count
     self.pool_list[length] = pool
