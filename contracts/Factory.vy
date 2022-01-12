@@ -21,7 +21,8 @@ interface CryptoPool:
         ma_half_time: uint256,
         initial_price: uint256,
         _token: address,
-        _coins: address[2]
+        _coins: address[2],
+        decimals: uint256[2]
     ): nonpayable
 
 interface ERC20:
@@ -79,7 +80,7 @@ struct PoolArray:
     token: address
     liquidity_gauge: address
     coins: address[2]
-    decimals: uint256[2]
+    decimals: uint256
 
 
 N_COINS: constant(int128) = 2
@@ -125,7 +126,7 @@ pool_list: public(address[4294967296])   # master list of pools
 def __init__(
     _fee_receiver: address,
     _pool_implementation: address,
-    _token_implementation: address, 
+    _token_implementation: address,
     _gauge_implementation: address,
     _weth: address
 ):
@@ -206,13 +207,13 @@ def deploy_pool(
     CryptoPool(pool).initialize(
         A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
         adjustment_step, admin_fee, ma_half_time, initial_price,
-        token, _coins)
+        token, _coins, decimals)
 
     length: uint256 = self.pool_count
     self.pool_list[length] = pool
     self.pool_count = length + 1
     self.pool_data[pool].token = token
-    self.pool_data[pool].decimals = decimals
+    self.pool_data[pool].decimals = shift(decimals[0], 8) + decimals[1]
     self.pool_data[pool].coins = _coins
 
     key: uint256 = bitwise_xor(convert(_coins[0], uint256), convert(_coins[1], uint256))
@@ -364,7 +365,8 @@ def get_decimals(_pool: address) -> uint256[2]:
     @param _pool Pool address
     @return uint256 list of decimals
     """
-    return self.pool_data[_pool].decimals
+    decimals: uint256 = self.pool_data[_pool].decimals
+    return [shift(decimals, -8), decimals % 256]
 
 
 @view
