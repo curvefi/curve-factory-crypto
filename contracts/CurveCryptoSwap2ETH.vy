@@ -860,34 +860,7 @@ def sqrt_int(x: uint256) -> uint256:
     raise "Did not converge"
 
 
-@view
-@external
-def A() -> uint256:
-    return self._A_gamma()[0]
-
-
-@view
-@external
-def gamma() -> uint256:
-    return self._A_gamma()[1]
-
-
-@external
-@view
-def fee() -> uint256:
-    return self._fee(self.xp())
-
-
-@external
-@view
-def get_virtual_price() -> uint256:
-    return 10**18 * self.get_xcp(self.D) / CurveToken(self.token).totalSupply()
-
-
-@external
-@view
-def price_oracle() -> uint256:
-    return self.internal_price_oracle()
+# External Functions
 
 
 @payable
@@ -919,38 +892,6 @@ def exchange_extended(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
                       use_eth: bool, sender: address, receiver: address, cb: bytes32) -> uint256:
     assert cb != EMPTY_BYTES32  # dev: No callback specified
     return self._exchange(sender, msg.value, i, j, dx, min_dy, use_eth, receiver, msg.sender, cb)
-
-
-@external
-@view
-def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
-    assert i != j  # dev: same input and output coin
-    assert i < N_COINS  # dev: coin index out of range
-    assert j < N_COINS  # dev: coin index out of range
-
-    precisions: uint256[2] = self._get_precisions()
-
-    price_scale: uint256 = self.price_scale * precisions[1]
-    xp: uint256[N_COINS] = self.balances
-
-    A_gamma: uint256[2] = self._A_gamma()
-    D: uint256 = self.D
-    if self.future_A_gamma_time > 0:
-        D = self.newton_D(A_gamma[0], A_gamma[1], self.xp())
-
-    xp[i] += dx
-    xp = [xp[0] * precisions[0], xp[1] * price_scale / PRECISION]
-
-    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, j)
-    dy: uint256 = xp[j] - y - 1
-    xp[j] = y
-    if j > 0:
-        dy = dy * PRECISION / price_scale
-    else:
-        dy /= precisions[0]
-    dy -= self._fee(xp) * dy / 10**10
-
-    return dy
 
 
 @payable
@@ -1087,34 +1028,6 @@ def remove_liquidity(_amount: uint256, min_amounts: uint256[N_COINS],
     self.D = D - D * amount / total_supply
 
     log RemoveLiquidity(msg.sender, balances, total_supply - _amount)
-
-
-@view
-@external
-def calc_token_amount(amounts: uint256[N_COINS]) -> uint256:
-    token_supply: uint256 = CurveToken(self.token).totalSupply()
-    precisions: uint256[2] = self._get_precisions()
-    price_scale: uint256 = self.price_scale * precisions[1]
-    A_gamma: uint256[2] = self._A_gamma()
-    xp: uint256[N_COINS] = self.xp()
-    amountsp: uint256[N_COINS] = [
-        amounts[0] * precisions[0],
-        amounts[1] * price_scale / PRECISION]
-    D0: uint256 = self.D
-    if self.future_A_gamma_time > 0:
-        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
-    xp[0] += amountsp[0]
-    xp[1] += amountsp[1]
-    D: uint256 = self.newton_D(A_gamma[0], A_gamma[1], xp)
-    d_token: uint256 = token_supply * D / D0 - token_supply
-    d_token -= self._calc_token_fee(amountsp, xp) * d_token / 10**10 + 1
-    return d_token
-
-
-@view
-@external
-def calc_withdraw_one_coin(token_amount: uint256, i: uint256) -> uint256:
-    return self._calc_withdraw_one_coin(self._A_gamma(), token_amount, i, True, False)[0]
 
 
 @external
@@ -1314,6 +1227,69 @@ def revert_new_parameters():
     self.admin_actions_deadline = 0
 
 
+# View Methods
+
+
+@external
+@view
+def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
+    assert i != j  # dev: same input and output coin
+    assert i < N_COINS  # dev: coin index out of range
+    assert j < N_COINS  # dev: coin index out of range
+
+    precisions: uint256[2] = self._get_precisions()
+
+    price_scale: uint256 = self.price_scale * precisions[1]
+    xp: uint256[N_COINS] = self.balances
+
+    A_gamma: uint256[2] = self._A_gamma()
+    D: uint256 = self.D
+    if self.future_A_gamma_time > 0:
+        D = self.newton_D(A_gamma[0], A_gamma[1], self.xp())
+
+    xp[i] += dx
+    xp = [xp[0] * precisions[0], xp[1] * price_scale / PRECISION]
+
+    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, j)
+    dy: uint256 = xp[j] - y - 1
+    xp[j] = y
+    if j > 0:
+        dy = dy * PRECISION / price_scale
+    else:
+        dy /= precisions[0]
+    dy -= self._fee(xp) * dy / 10**10
+
+    return dy
+
+
+@view
+@external
+def calc_token_amount(amounts: uint256[N_COINS]) -> uint256:
+    token_supply: uint256 = CurveToken(self.token).totalSupply()
+    precisions: uint256[2] = self._get_precisions()
+    price_scale: uint256 = self.price_scale * precisions[1]
+    A_gamma: uint256[2] = self._A_gamma()
+    xp: uint256[N_COINS] = self.xp()
+    amountsp: uint256[N_COINS] = [
+        amounts[0] * precisions[0],
+        amounts[1] * price_scale / PRECISION]
+    D0: uint256 = self.D
+    if self.future_A_gamma_time > 0:
+        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
+    xp[0] += amountsp[0]
+    xp[1] += amountsp[1]
+    D: uint256 = self.newton_D(A_gamma[0], A_gamma[1], xp)
+    d_token: uint256 = token_supply * D / D0 - token_supply
+    d_token -= self._calc_token_fee(amountsp, xp) * d_token / 10**10 + 1
+    return d_token
+
+
+@view
+@external
+def calc_withdraw_one_coin(token_amount: uint256, i: uint256) -> uint256:
+    return self._calc_withdraw_one_coin(self._A_gamma(), token_amount, i, True, False)[0]
+
+
 @external
 @view
 def lp_price() -> uint256:
@@ -1321,6 +1297,39 @@ def lp_price() -> uint256:
     Approximate LP token price
     """
     return 2 * self.virtual_price * self.sqrt_int(self.internal_price_oracle()) / 10**18
+
+
+@view
+@external
+def A() -> uint256:
+    return self._A_gamma()[0]
+
+
+@view
+@external
+def gamma() -> uint256:
+    return self._A_gamma()[1]
+
+
+@external
+@view
+def fee() -> uint256:
+    return self._fee(self.xp())
+
+
+@external
+@view
+def get_virtual_price() -> uint256:
+    return 10**18 * self.get_xcp(self.D) / CurveToken(self.token).totalSupply()
+
+
+@external
+@view
+def price_oracle() -> uint256:
+    return self.internal_price_oracle()
+
+
+# Initializer
 
 
 @external
