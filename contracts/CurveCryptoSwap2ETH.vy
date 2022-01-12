@@ -166,53 +166,6 @@ def __init__(_weth: address):
     self.mid_fee = 22022022
 
 
-@external
-def initialize(
-    A: uint256,
-    gamma: uint256,
-    mid_fee: uint256,
-    out_fee: uint256,
-    allowed_extra_profit: uint256,
-    fee_gamma: uint256,
-    adjustment_step: uint256,
-    admin_fee: uint256,
-    ma_half_time: uint256,
-    initial_price: uint256,
-    _token: address,
-    _coins: address[N_COINS],
-    _precisions: uint256,
-):
-    assert self.mid_fee == 0  # dev: check that we call it from factory
-
-    self.factory = msg.sender
-
-    # Pack A and gamma:
-    # shifted A + gamma
-    A_gamma: uint256 = shift(A, 128)
-    A_gamma = bitwise_or(A_gamma, gamma)
-    self.initial_A_gamma = A_gamma
-    self.future_A_gamma = A_gamma
-
-    self.mid_fee = mid_fee
-    self.out_fee = out_fee
-    self.allowed_extra_profit = allowed_extra_profit
-    self.fee_gamma = fee_gamma
-    self.adjustment_step = adjustment_step
-    self.admin_fee = admin_fee
-
-    self.price_scale = initial_price
-    self._price_oracle = initial_price
-    self.last_prices = initial_price
-    self.last_prices_timestamp = block.timestamp
-    self.ma_half_time = ma_half_time
-
-    self.xcp_profit_a = 10**18
-
-    self.token = _token
-    self.coins = _coins
-    self.PRECISIONS = _precisions
-
-
 @payable
 @external
 def __default__():
@@ -1364,3 +1317,50 @@ def lp_price() -> uint256:
     Approximate LP token price
     """
     return 2 * self.virtual_price * self.sqrt_int(self.internal_price_oracle()) / 10**18
+
+
+@external
+def initialize(
+    A: uint256,
+    gamma: uint256,
+    mid_fee: uint256,
+    out_fee: uint256,
+    allowed_extra_profit: uint256,
+    fee_gamma: uint256,
+    adjustment_step: uint256,
+    admin_fee: uint256,
+    ma_half_time: uint256,
+    initial_price: uint256,
+    _token: address,
+    _coins: address[N_COINS],
+    _precisions: uint256,
+):
+    assert self.mid_fee == 0  # dev: check that we call it from factory
+
+    self.factory = msg.sender
+
+    # Pack A and gamma:
+    # shifted A + gamma
+    A_gamma: uint256 = shift(A, 128)
+    A_gamma = bitwise_or(A_gamma, gamma)
+    self.initial_A_gamma = A_gamma
+    self.future_A_gamma = A_gamma
+
+    self.mid_fee = mid_fee
+    self.out_fee = out_fee
+    self.allowed_extra_profit = allowed_extra_profit
+    self.fee_gamma = fee_gamma
+    self.adjustment_step = adjustment_step
+    self.admin_fee = admin_fee
+
+    self.price_scale = initial_price
+    self._price_oracle = initial_price
+    self.last_prices = initial_price
+    self.last_prices_timestamp = block.timestamp
+    self.ma_half_time = ma_half_time
+
+    self.xcp_profit_a = 10**18
+
+    self.token = _token
+    self.coins = _coins
+    self.PRECISIONS = _precisions
