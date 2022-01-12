@@ -3,6 +3,8 @@
 # Pool for two crypto assets
 
 # Universal implementation which can use both ETH and ERC20s
+from vyper.interfaces import ERC20
+
 
 interface Factory:
     def admin() -> address: view
@@ -13,12 +15,6 @@ interface CurveToken:
     def mint(_to: address, _value: uint256) -> bool: nonpayable
     def mint_relative(_to: address, frac: uint256) -> uint256: nonpayable
     def burnFrom(_to: address, _value: uint256) -> bool: nonpayable
-
-interface ERC20:
-    def transfer(_to: address, _value: uint256) -> bool: nonpayable
-    def transferFrom(_from: address, _to: address, _value: uint256) -> bool: nonpayable
-    def decimals() -> uint8: view
-    def balanceOf(_user: address) -> uint256: view
 
 interface WETH:
     def deposit(): payable
