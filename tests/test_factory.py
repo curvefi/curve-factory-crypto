@@ -27,16 +27,16 @@ def test_get_coin_indices(factory, crypto_swap, coins):
 
 
 def test_add_gauge(factory, crypto_swap, accounts, LiquidityGauge):
-    if 'fork' not in network.show_active():
-        pytest.skip('Only for forkmode')
+    if "fork" not in network.show_active():
+        pytest.skip("Only for forkmode")
     assert factory.get_gauge(crypto_swap) == "0x0000000000000000000000000000000000000000"
-    factory.deploy_gauge(crypto_swap, {'from': accounts[0]})
+    factory.deploy_gauge(crypto_swap, {"from": accounts[0]})
     gauge = LiquidityGauge.at(factory.get_gauge(crypto_swap))
     assert gauge.lp_token() == crypto_swap.token()
 
 
 def test_get_eth_index(factory, crypto_swap):
-    assert factory.get_eth_index(crypto_swap) == 2**256 - 1
+    assert factory.get_eth_index(crypto_swap) == 2 ** 256 - 1
 
 
 def test_get_token(factory, crypto_swap):
@@ -44,6 +44,6 @@ def test_get_token(factory, crypto_swap):
 
 
 def test_admin(factory, crypto_swap, accounts):
-    crypto_swap.revert_new_parameters({'from': accounts[0]})
+    crypto_swap.revert_new_parameters({"from": accounts[0]})
     with brownie.reverts():
-        crypto_swap.revert_new_parameters({'from': accounts[1]})
+        crypto_swap.revert_new_parameters({"from": accounts[1]})
