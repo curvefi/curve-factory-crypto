@@ -3,6 +3,8 @@
 # Pool for two crypto assets
 
 # Universal implementation which can use both ETH and ERC20s
+from vyper.interfaces import ERC20
+
 
 interface Factory:
     def admin() -> address: view
@@ -13,12 +15,6 @@ interface CurveToken:
     def mint(_to: address, _value: uint256) -> bool: nonpayable
     def mint_relative(_to: address, frac: uint256) -> uint256: nonpayable
     def burnFrom(_to: address, _value: uint256) -> bool: nonpayable
-
-interface ERC20:
-    def transfer(_to: address, _value: uint256) -> bool: nonpayable
-    def transferFrom(_from: address, _to: address, _value: uint256) -> bool: nonpayable
-    def decimals() -> uint8: view
-    def balanceOf(_user: address) -> uint256: view
 
 interface WETH:
     def deposit(): payable
@@ -87,9 +83,31 @@ event ClaimAdminFee:
     tokens: uint256
 
 
+ADMIN_ACTIONS_DELAY: constant(uint256) = 3 * 86400
+MIN_RAMP_TIME: constant(uint256) = 86400
+
+MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
+MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
+MAX_FEE: constant(uint256) = 10 * 10 ** 9
+MAX_A_CHANGE: constant(uint256) = 10
+NOISE_FEE: constant(uint256) = 10**5  # 0.1 bps
+
+MIN_GAMMA: constant(uint256) = 10**10
+MAX_GAMMA: constant(uint256) = 2 * 10**16
+
+MIN_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER / 10
+MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
+
+EXP_PRECISION: constant(uint256) = 10**10
+
 N_COINS: constant(int128) = 2
 PRECISION: constant(uint256) = 10 ** 18  # The precision to convert to
 A_MULTIPLIER: constant(uint256) = 10000
+
+
+# Implementation can be changed by changing this constant
+WETH20: immutable(address)
+
 
 token: public(address)
 coins: public(address[N_COINS])
@@ -136,32 +154,12 @@ not_adjusted: bool
 
 admin_actions_deadline: public(uint256)
 
-ADMIN_ACTIONS_DELAY: constant(uint256) = 3 * 86400
-MIN_RAMP_TIME: constant(uint256) = 86400
-
-MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
-MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
-MAX_FEE: constant(uint256) = 10 * 10 ** 9
-MAX_A_CHANGE: constant(uint256) = 10
-NOISE_FEE: constant(uint256) = 10**5  # 0.1 bps
-
-MIN_GAMMA: constant(uint256) = 10**10
-MAX_GAMMA: constant(uint256) = 2 * 10**16
-
-MIN_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER / 10
-MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
-
 # This must be changed for different N_COINS
 # For example:
 # N_COINS = 3 -> 1  (10**18 -> 10**18)
 # N_COINS = 4 -> 10**8  (10**18 -> 10**10)
 # PRICE_PRECISION_MUL: constant(uint256) = 1
 PRECISIONS: uint256  # packed
-
-EXP_PRECISION: constant(uint256) = 10**10
-
-# Implementation can be changed by changing this constant
-WETH20: immutable(address)
 
 
 @external
@@ -170,89 +168,13 @@ def __init__(_weth: address):
     self.mid_fee = 22022022
 
 
-@external
-def initialize(
-    A: uint256,
-    gamma: uint256,
-    mid_fee: uint256,
-    out_fee: uint256,
-    allowed_extra_profit: uint256,
-    fee_gamma: uint256,
-    adjustment_step: uint256,
-    admin_fee: uint256,
-    ma_half_time: uint256,
-    initial_price: uint256,
-    _token: address,
-    _coins: address[N_COINS]
-):
-    assert self.mid_fee == 0  # dev: check that we call it from factory
-
-    self.factory = msg.sender
-
-    # Pack A and gamma:
-    # shifted A + gamma
-    A_gamma: uint256 = shift(A, 128)
-    A_gamma = bitwise_or(A_gamma, gamma)
-    self.initial_A_gamma = A_gamma
-    self.future_A_gamma = A_gamma
-
-    self.mid_fee = mid_fee
-    self.out_fee = out_fee
-    self.allowed_extra_profit = allowed_extra_profit
-    self.fee_gamma = fee_gamma
-    self.adjustment_step = adjustment_step
-    self.admin_fee = admin_fee
-
-    self.price_scale = initial_price
-    self._price_oracle = initial_price
-    self.last_prices = initial_price
-    self.last_prices_timestamp = block.timestamp
-    self.ma_half_time = ma_half_time
-
-    self.xcp_profit_a = 10**18
-
-    self.token = _token
-    self.coins = _coins
-    self.PRECISIONS = convert(18 - ERC20(_coins[0]).decimals(), uint256) +\
-                      shift(convert(18 - ERC20(_coins[1]).decimals(), uint256), 8)
-
-
 @payable
 @external
 def __default__():
     pass
 
 
-@internal
-def _safe_transfer(coin: address, _to: address, _amount: uint256):
-    response: Bytes[32] = raw_call(
-        coin,
-        concat(
-            method_id("transfer(address,uint256)"),
-            convert(_to, bytes32),
-            convert(_amount, bytes32),
-        ),
-        max_outsize=32,
-    )
-    if len(response) > 0:
-        assert convert(response, bool)
-
-
-@internal
-def _safe_transfer_from(coin: address, _from: address, _to: address, _amount: uint256):
-    response: Bytes[32] = raw_call(
-        coin,
-        concat(
-            method_id("transferFrom(address,address,uint256)"),
-            convert(_from, bytes32),
-            convert(_to, bytes32),
-            convert(_amount, bytes32),
-        ),
-        max_outsize=32,
-    )
-    if len(response) > 0:
-        assert convert(response, bool)  # dev: failed transfer
-
+# Internal Functions
 
 @internal
 @view
@@ -261,6 +183,61 @@ def _get_precisions() -> uint256[2]:
     p1: uint256 = 10 ** shift(p0, -8)
     p0 = 10 ** bitwise_and(p0, 255)
     return [p0, p1]
+
+
+@internal
+@view
+def xp() -> uint256[N_COINS]:
+    precisions: uint256[2] = self._get_precisions()
+    return [self.balances[0] * precisions[0],
+            self.balances[1] * precisions[1] * self.price_scale / PRECISION]
+
+
+@view
+@internal
+def _A_gamma() -> uint256[2]:
+    t1: uint256 = self.future_A_gamma_time
+
+    A_gamma_1: uint256 = self.future_A_gamma
+    gamma1: uint256 = bitwise_and(A_gamma_1, 2**128-1)
+    A1: uint256 = shift(A_gamma_1, -128)
+
+    if block.timestamp < t1:
+        # handle ramping up and down of A
+        A_gamma_0: uint256 = self.initial_A_gamma
+        t0: uint256 = self.initial_A_gamma_time
+
+        # Less readable but more compact way of writing and converting to uint256
+        # gamma0: uint256 = bitwise_and(A_gamma_0, 2**128-1)
+        # A0: uint256 = shift(A_gamma_0, -128)
+        # A1 = A0 + (A1 - A0) * (block.timestamp - t0) / (t1 - t0)
+        # gamma1 = gamma0 + (gamma1 - gamma0) * (block.timestamp - t0) / (t1 - t0)
+
+        t1 -= t0
+        t0 = block.timestamp - t0
+        t2: uint256 = t1 - t0
+
+        A1 = (shift(A_gamma_0, -128) * t2 + A1 * t0) / t1
+        gamma1 = (bitwise_and(A_gamma_0, 2**128-1) * t2 + gamma1 * t0) / t1
+
+    return [A1, gamma1]
+
+
+@internal
+@view
+def _fee(xp: uint256[N_COINS]) -> uint256:
+    """
+    f = fee_gamma / (fee_gamma + (1 - K))
+    where
+    K = prod(x) / (sum(x) / N)**N
+    (all normalized to 1e18)
+    """
+    fee_gamma: uint256 = self.fee_gamma
+    f: uint256 = xp[0] + xp[1]  # sum
+    f = fee_gamma * 10**18 / (
+        fee_gamma + 10**18 - (10**18 * N_COINS**N_COINS) * xp[0] / f * xp[1] / f
+    )
+    return (self.mid_fee * f + self.out_fee * (10**18 - f)) / 10**18
 
 
 ### Math functions
@@ -489,88 +466,9 @@ def halfpow(power: uint256) -> uint256:
 
 @internal
 @view
-def xp() -> uint256[N_COINS]:
-    precisions: uint256[2] = self._get_precisions()
-    return [self.balances[0] * precisions[0],
-            self.balances[1] * precisions[1] * self.price_scale / PRECISION]
-
-
-@view
-@internal
-def _A_gamma() -> uint256[2]:
-    t1: uint256 = self.future_A_gamma_time
-
-    A_gamma_1: uint256 = self.future_A_gamma
-    gamma1: uint256 = bitwise_and(A_gamma_1, 2**128-1)
-    A1: uint256 = shift(A_gamma_1, -128)
-
-    if block.timestamp < t1:
-        # handle ramping up and down of A
-        A_gamma_0: uint256 = self.initial_A_gamma
-        t0: uint256 = self.initial_A_gamma_time
-
-        # Less readable but more compact way of writing and converting to uint256
-        # gamma0: uint256 = bitwise_and(A_gamma_0, 2**128-1)
-        # A0: uint256 = shift(A_gamma_0, -128)
-        # A1 = A0 + (A1 - A0) * (block.timestamp - t0) / (t1 - t0)
-        # gamma1 = gamma0 + (gamma1 - gamma0) * (block.timestamp - t0) / (t1 - t0)
-
-        t1 -= t0
-        t0 = block.timestamp - t0
-        t2: uint256 = t1 - t0
-
-        A1 = (shift(A_gamma_0, -128) * t2 + A1 * t0) / t1
-        gamma1 = (bitwise_and(A_gamma_0, 2**128-1) * t2 + gamma1 * t0) / t1
-
-    return [A1, gamma1]
-
-
-@view
-@external
-def A() -> uint256:
-    return self._A_gamma()[0]
-
-
-@view
-@external
-def gamma() -> uint256:
-    return self._A_gamma()[1]
-
-
-@internal
-@view
-def _fee(xp: uint256[N_COINS]) -> uint256:
-    """
-    f = fee_gamma / (fee_gamma + (1 - K))
-    where
-    K = prod(x) / (sum(x) / N)**N
-    (all normalized to 1e18)
-    """
-    fee_gamma: uint256 = self.fee_gamma
-    f: uint256 = xp[0] + xp[1]  # sum
-    f = fee_gamma * 10**18 / (
-        fee_gamma + 10**18 - (10**18 * N_COINS**N_COINS) * xp[0] / f * xp[1] / f
-    )
-    return (self.mid_fee * f + self.out_fee * (10**18 - f)) / 10**18
-
-
-@external
-@view
-def fee() -> uint256:
-    return self._fee(self.xp())
-
-
-@internal
-@view
 def get_xcp(D: uint256) -> uint256:
     x: uint256[N_COINS] = [D / N_COINS, D * PRECISION / (self.price_scale * N_COINS)]
     return self.geometric_mean(x, True)
-
-
-@external
-@view
-def get_virtual_price() -> uint256:
-    return 10**18 * self.get_xcp(self.D) / CurveToken(self.token).totalSupply()
 
 
 @internal
@@ -627,12 +525,6 @@ def internal_price_oracle() -> uint256:
 
     else:
         return price_oracle
-
-
-@external
-@view
-def price_oracle() -> uint256:
-    return self.internal_price_oracle()
 
 
 @internal
@@ -749,7 +641,7 @@ def tweak_price(A_gamma: uint256[2],_xp: uint256[N_COINS], p_i: uint256, new_D: 
 
 @internal
 def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-              use_eth: bool, receiver: address, callbacker: address, callback_sig: Bytes[4]) -> uint256:
+              use_eth: bool, receiver: address, callbacker: address, callback_sig: bytes32) -> uint256:
     assert i != j  # dev: coin index out of range
     assert i < N_COINS  # dev: coin index out of range
     assert j < N_COINS  # dev: coin index out of range
@@ -813,19 +705,21 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
         assert mvalue == dx  # dev: incorrect eth amount
     else:
         assert mvalue == 0  # dev: nonzero eth amount
-        if callback_sig == b"\x00\x00\x00\x00":
-            self._safe_transfer_from(in_coin, sender, self, dx)
+        if callback_sig == EMPTY_BYTES32:
+            response: Bytes[32] = raw_call(
+                in_coin,
+                _abi_encode(
+                    sender, self, dx, method_id=method_id("transferFrom(address,address,uint256)")
+                ),
+                max_outsize=32,
+            )
+            if len(response) != 0:
+                assert convert(response, bool)  # dev: failed transfer
         else:
             b: uint256 = ERC20(in_coin).balanceOf(self)
-            raw_call(callbacker,
-                     concat(
-                        callback_sig,
-                        convert(sender, bytes32),
-                        convert(receiver, bytes32),
-                        convert(in_coin, bytes32),
-                        convert(dx, bytes32),
-                        convert(dy, bytes32)
-                     )
+            raw_call(
+                callbacker,
+                concat(slice(callback_sig, 0, 4), _abi_encode(sender, receiver, in_coin, dx, dy))
             )
             assert ERC20(in_coin).balanceOf(self) - b == dx  # dev: callback didn't give us coins
         if in_coin == WETH20:
@@ -836,7 +730,13 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     else:
         if out_coin == WETH20:
             WETH(WETH20).deposit(value=dy)
-        self._safe_transfer(out_coin, receiver, dy)
+        response: Bytes[32] = raw_call(
+            out_coin,
+            _abi_encode(receiver, dy, method_id=method_id("transfer(address,uint256)")),
+            max_outsize=32,
+        )
+        if len(response) != 0:
+            assert convert(response, bool)
 
     y *= prec_j
     if j > 0:
@@ -859,69 +759,6 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     return dy
 
 
-@payable
-@external
-@nonreentrant('lock')
-def exchange(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-             use_eth: bool = False, receiver: address = msg.sender) -> uint256:
-    """
-    Exchange using WETH by default
-    """
-    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, use_eth, receiver, ZERO_ADDRESS, b'\x00\x00\x00\x00')
-
-
-@payable
-@external
-@nonreentrant('lock')
-def exchange_underlying(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-                        receiver: address = msg.sender) -> uint256:
-    """
-    Exchange using ETH
-    """
-    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, True, receiver, ZERO_ADDRESS, b'\x00\x00\x00\x00')
-
-
-@payable
-@external
-@nonreentrant('lock')
-def exchange_extended(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-                      use_eth: bool, sender: address, receiver: address, cb: Bytes[4]) -> uint256:
-    assert cb != b'\x00\x00\x00\x00'  # dev: No callback specified
-    return self._exchange(sender, msg.value, i, j, dx, min_dy, use_eth, receiver, msg.sender, cb)
-
-
-@external
-@view
-def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
-    assert i != j  # dev: same input and output coin
-    assert i < N_COINS  # dev: coin index out of range
-    assert j < N_COINS  # dev: coin index out of range
-
-    precisions: uint256[2] = self._get_precisions()
-
-    price_scale: uint256 = self.price_scale * precisions[1]
-    xp: uint256[N_COINS] = self.balances
-
-    A_gamma: uint256[2] = self._A_gamma()
-    D: uint256 = self.D
-    if self.future_A_gamma_time > 0:
-        D = self.newton_D(A_gamma[0], A_gamma[1], self.xp())
-
-    xp[i] += dx
-    xp = [xp[0] * precisions[0], xp[1] * price_scale / PRECISION]
-
-    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, j)
-    dy: uint256 = xp[j] - y - 1
-    xp[j] = y
-    if j > 0:
-        dy = dy * PRECISION / price_scale
-    else:
-        dy /= precisions[0]
-    dy -= self._fee(xp) * dy / 10**10
-
-    return dy
-
-
 @view
 @internal
 def _calc_token_fee(amounts: uint256[N_COINS], xp: uint256[N_COINS]) -> uint256:
@@ -938,6 +775,113 @@ def _calc_token_fee(amounts: uint256[N_COINS], xp: uint256[N_COINS]) -> uint256:
         else:
             Sdiff += avg - _x
     return fee * Sdiff / S + NOISE_FEE
+
+
+@internal
+@view
+def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint256, update_D: bool,
+                            calc_price: bool) -> (uint256, uint256, uint256, uint256[N_COINS]):
+    token_supply: uint256 = CurveToken(self.token).totalSupply()
+    assert token_amount <= token_supply  # dev: token amount more than supply
+    assert i < N_COINS  # dev: coin out of range
+
+    xx: uint256[N_COINS] = self.balances
+    D0: uint256 = 0
+    precisions: uint256[2] = self._get_precisions()
+
+    price_scale_i: uint256 = self.price_scale * precisions[1]
+    xp: uint256[N_COINS] = [xx[0] * precisions[0], xx[1] * price_scale_i / PRECISION]
+    if i == 0:
+        price_scale_i = PRECISION * precisions[0]
+
+    if update_D:
+        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
+    else:
+        D0 = self.D
+
+    D: uint256 = D0
+
+    # Charge the fee on D, not on y, e.g. reducing invariant LESS than charging the user
+    fee: uint256 = self._fee(xp)
+    dD: uint256 = token_amount * D / token_supply
+    D -= (dD - (fee * dD / (2 * 10**10) + 1))
+    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, i)
+    dy: uint256 = (xp[i] - y) * PRECISION / price_scale_i
+    xp[i] = y
+
+    # Price calc
+    p: uint256 = 0
+    if calc_price and dy > 10**5 and token_amount > 10**5:
+        # p_i = dD / D0 * sum'(p_k * x_k) / (dy - dD / D0 * y0)
+        S: uint256 = 0
+        precision: uint256 = precisions[0]
+        if i == 1:
+            S = xx[0] * precisions[0]
+            precision = precisions[1]
+        else:
+            S = xx[1] * precisions[1]
+        S = S * dD / D0
+        p = S * PRECISION / (dy * precision - dD * xx[i] * precision / D0)
+        if i == 0:
+            p = (10**18)**2 / p
+
+    return dy, p, D, xp
+
+
+@internal
+@pure
+def sqrt_int(x: uint256) -> uint256:
+    """
+    Originating from: https://github.com/vyperlang/vyper/issues/1266
+    """
+
+    if x == 0:
+        return 0
+
+    z: uint256 = (x + 10**18) / 2
+    y: uint256 = x
+
+    for i in range(256):
+        if z == y:
+            return y
+        y = z
+        z = (x * 10**18 / z + z) / 2
+
+    raise "Did not converge"
+
+
+# External Functions
+
+
+@payable
+@external
+@nonreentrant('lock')
+def exchange(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
+             use_eth: bool = False, receiver: address = msg.sender) -> uint256:
+    """
+    Exchange using WETH by default
+    """
+    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, use_eth, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
+
+
+@payable
+@external
+@nonreentrant('lock')
+def exchange_underlying(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
+                        receiver: address = msg.sender) -> uint256:
+    """
+    Exchange using ETH
+    """
+    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, True, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
+
+
+@payable
+@external
+@nonreentrant('lock')
+def exchange_extended(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
+                      use_eth: bool, sender: address, receiver: address, cb: bytes32) -> uint256:
+    assert cb != EMPTY_BYTES32  # dev: No callback specified
+    return self._exchange(sender, msg.value, i, j, dx, min_dy, use_eth, receiver, msg.sender, cb)
 
 
 @payable
@@ -979,7 +923,18 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
             assert msg.value == amounts[i]  # dev: incorrect eth amount
         if amounts[i] > 0:
             if (not use_eth) or (coin != WETH20):
-                self._safe_transfer_from(coin, msg.sender, self, amounts[i])
+                response: Bytes[32] = raw_call(
+                    coin,
+                    _abi_encode(
+                        msg.sender,
+                        self,
+                        amounts[i],
+                        method_id=method_id("transferFrom(address,address,uint256)"),
+                    ),
+                    max_outsize=32,
+                )
+                if len(response) != 0:
+                    assert convert(response, bool)  # dev: failed transfer
                 if coin == WETH20:
                     WETH(WETH20).withdraw(amounts[i])
             amountsp[i] = xp[i] - xp_old[i]
@@ -1068,91 +1023,18 @@ def remove_liquidity(_amount: uint256, min_amounts: uint256[N_COINS],
         else:
             if coin == WETH20:
                 WETH(WETH20).deposit(value=d_balance)
-            self._safe_transfer(coin, receiver, d_balance)
+            response: Bytes[32] = raw_call(
+                coin,
+                _abi_encode(receiver, d_balance, method_id=method_id("transfer(address,uint256)")),
+                max_outsize=32,
+            )
+            if len(response) != 0:
+                assert convert(response, bool)
 
     D: uint256 = self.D
     self.D = D - D * amount / total_supply
 
     log RemoveLiquidity(msg.sender, balances, total_supply - _amount)
-
-
-@view
-@external
-def calc_token_amount(amounts: uint256[N_COINS]) -> uint256:
-    token_supply: uint256 = CurveToken(self.token).totalSupply()
-    precisions: uint256[2] = self._get_precisions()
-    price_scale: uint256 = self.price_scale * precisions[1]
-    A_gamma: uint256[2] = self._A_gamma()
-    xp: uint256[N_COINS] = self.xp()
-    amountsp: uint256[N_COINS] = [
-        amounts[0] * precisions[0],
-        amounts[1] * price_scale / PRECISION]
-    D0: uint256 = self.D
-    if self.future_A_gamma_time > 0:
-        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
-    xp[0] += amountsp[0]
-    xp[1] += amountsp[1]
-    D: uint256 = self.newton_D(A_gamma[0], A_gamma[1], xp)
-    d_token: uint256 = token_supply * D / D0 - token_supply
-    d_token -= self._calc_token_fee(amountsp, xp) * d_token / 10**10 + 1
-    return d_token
-
-
-@internal
-@view
-def _calc_withdraw_one_coin(A_gamma: uint256[2], token_amount: uint256, i: uint256, update_D: bool,
-                            calc_price: bool) -> (uint256, uint256, uint256, uint256[N_COINS]):
-    token_supply: uint256 = CurveToken(self.token).totalSupply()
-    assert token_amount <= token_supply  # dev: token amount more than supply
-    assert i < N_COINS  # dev: coin out of range
-
-    xx: uint256[N_COINS] = self.balances
-    D0: uint256 = 0
-    precisions: uint256[2] = self._get_precisions()
-
-    price_scale_i: uint256 = self.price_scale * precisions[1]
-    xp: uint256[N_COINS] = [xx[0] * precisions[0], xx[1] * price_scale_i / PRECISION]
-    if i == 0:
-        price_scale_i = PRECISION * precisions[0]
-
-    if update_D:
-        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
-    else:
-        D0 = self.D
-
-    D: uint256 = D0
-
-    # Charge the fee on D, not on y, e.g. reducing invariant LESS than charging the user
-    fee: uint256 = self._fee(xp)
-    dD: uint256 = token_amount * D / token_supply
-    D -= (dD - (fee * dD / (2 * 10**10) + 1))
-    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, i)
-    dy: uint256 = (xp[i] - y) * PRECISION / price_scale_i
-    xp[i] = y
-
-    # Price calc
-    p: uint256 = 0
-    if calc_price and dy > 10**5 and token_amount > 10**5:
-        # p_i = dD / D0 * sum'(p_k * x_k) / (dy - dD / D0 * y0)
-        S: uint256 = 0
-        precision: uint256 = precisions[0]
-        if i == 1:
-            S = xx[0] * precisions[0]
-            precision = precisions[1]
-        else:
-            S = xx[1] * precisions[1]
-        S = S * dD / D0
-        p = S * PRECISION / (dy * precision - dD * xx[i] * precision / D0)
-        if i == 0:
-            p = (10**18)**2 / p
-
-    return dy, p, D, xp
-
-
-@view
-@external
-def calc_withdraw_one_coin(token_amount: uint256, i: uint256) -> uint256:
-    return self._calc_withdraw_one_coin(self._A_gamma(), token_amount, i, True, False)[0]
 
 
 @external
@@ -1181,7 +1063,13 @@ def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uin
     else:
         if coin == WETH20:
             WETH(WETH20).deposit(value=dy)
-        self._safe_transfer(coin, receiver, dy)
+        response: Bytes[32] = raw_call(
+            coin,
+            _abi_encode(receiver, dy, method_id=method_id("transfer(address,uint256)")),
+            max_outsize=32,
+        )
+        if len(response) != 0:
+            assert convert(response, bool)
 
     self.tweak_price(A_gamma, xp, p, D)
 
@@ -1352,26 +1240,67 @@ def revert_new_parameters():
     self.admin_actions_deadline = 0
 
 
-@internal
-@pure
-def sqrt_int(x: uint256) -> uint256:
-    """
-    Originating from: https://github.com/vyperlang/vyper/issues/1266
-    """
+# View Methods
 
-    if x == 0:
-        return 0
 
-    z: uint256 = (x + 10**18) / 2
-    y: uint256 = x
+@external
+@view
+def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256:
+    assert i != j  # dev: same input and output coin
+    assert i < N_COINS  # dev: coin index out of range
+    assert j < N_COINS  # dev: coin index out of range
 
-    for i in range(256):
-        if z == y:
-            return y
-        y = z
-        z = (x * 10**18 / z + z) / 2
+    precisions: uint256[2] = self._get_precisions()
 
-    raise "Did not converge"
+    price_scale: uint256 = self.price_scale * precisions[1]
+    xp: uint256[N_COINS] = self.balances
+
+    A_gamma: uint256[2] = self._A_gamma()
+    D: uint256 = self.D
+    if self.future_A_gamma_time > 0:
+        D = self.newton_D(A_gamma[0], A_gamma[1], self.xp())
+
+    xp[i] += dx
+    xp = [xp[0] * precisions[0], xp[1] * price_scale / PRECISION]
+
+    y: uint256 = self.newton_y(A_gamma[0], A_gamma[1], xp, D, j)
+    dy: uint256 = xp[j] - y - 1
+    xp[j] = y
+    if j > 0:
+        dy = dy * PRECISION / price_scale
+    else:
+        dy /= precisions[0]
+    dy -= self._fee(xp) * dy / 10**10
+
+    return dy
+
+
+@view
+@external
+def calc_token_amount(amounts: uint256[N_COINS]) -> uint256:
+    token_supply: uint256 = CurveToken(self.token).totalSupply()
+    precisions: uint256[2] = self._get_precisions()
+    price_scale: uint256 = self.price_scale * precisions[1]
+    A_gamma: uint256[2] = self._A_gamma()
+    xp: uint256[N_COINS] = self.xp()
+    amountsp: uint256[N_COINS] = [
+        amounts[0] * precisions[0],
+        amounts[1] * price_scale / PRECISION]
+    D0: uint256 = self.D
+    if self.future_A_gamma_time > 0:
+        D0 = self.newton_D(A_gamma[0], A_gamma[1], xp)
+    xp[0] += amountsp[0]
+    xp[1] += amountsp[1]
+    D: uint256 = self.newton_D(A_gamma[0], A_gamma[1], xp)
+    d_token: uint256 = token_supply * D / D0 - token_supply
+    d_token -= self._calc_token_fee(amountsp, xp) * d_token / 10**10 + 1
+    return d_token
+
+
+@view
+@external
+def calc_withdraw_one_coin(token_amount: uint256, i: uint256) -> uint256:
+    return self._calc_withdraw_one_coin(self._A_gamma(), token_amount, i, True, False)[0]
 
 
 @external
@@ -1381,3 +1310,83 @@ def lp_price() -> uint256:
     Approximate LP token price
     """
     return 2 * self.virtual_price * self.sqrt_int(self.internal_price_oracle()) / 10**18
+
+
+@view
+@external
+def A() -> uint256:
+    return self._A_gamma()[0]
+
+
+@view
+@external
+def gamma() -> uint256:
+    return self._A_gamma()[1]
+
+
+@external
+@view
+def fee() -> uint256:
+    return self._fee(self.xp())
+
+
+@external
+@view
+def get_virtual_price() -> uint256:
+    return 10**18 * self.get_xcp(self.D) / CurveToken(self.token).totalSupply()
+
+
+@external
+@view
+def price_oracle() -> uint256:
+    return self.internal_price_oracle()
+
+
+# Initializer
+
+
+@external
+def initialize(
+    A: uint256,
+    gamma: uint256,
+    mid_fee: uint256,
+    out_fee: uint256,
+    allowed_extra_profit: uint256,
+    fee_gamma: uint256,
+    adjustment_step: uint256,
+    admin_fee: uint256,
+    ma_half_time: uint256,
+    initial_price: uint256,
+    _token: address,
+    _coins: address[N_COINS],
+    _precisions: uint256,
+):
+    assert self.mid_fee == 0  # dev: check that we call it from factory
+
+    self.factory = msg.sender
+
+    # Pack A and gamma:
+    # shifted A + gamma
+    A_gamma: uint256 = shift(A, 128)
+    A_gamma = bitwise_or(A_gamma, gamma)
+    self.initial_A_gamma = A_gamma
+    self.future_A_gamma = A_gamma
+
+    self.mid_fee = mid_fee
+    self.out_fee = out_fee
+    self.allowed_extra_profit = allowed_extra_profit
+    self.fee_gamma = fee_gamma
+    self.adjustment_step = adjustment_step
+    self.admin_fee = admin_fee
+
+    self.price_scale = initial_price
+    self._price_oracle = initial_price
+    self.last_prices = initial_price
+    self.last_prices_timestamp = block.timestamp
+    self.ma_half_time = ma_half_time
+
+    self.xcp_profit_a = 10**18
+
+    self.token = _token
+    self.coins = _coins
+    self.PRECISIONS = _precisions

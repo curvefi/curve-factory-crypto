@@ -6,36 +6,8 @@
 @notice Permissionless pool deployer and registry
 """
 
-struct PoolArray:
-    token: address
-    liquidity_gauge: address
-    coins: address[2]
-    decimals: uint256[2]
-
-interface ERC20:
-    def balanceOf(_addr: address) -> uint256: view
-    def decimals() -> uint256: view
-    def totalSupply() -> uint256: view
-    def approve(_spender: address, _amount: uint256): nonpayable
-    def initialize(_name: String[64], _symbol: String[32], _pool: address): nonpayable
 
 interface CryptoPool:
-    def A() -> uint256: view
-    def gamma() -> uint256: view
-    def mid_fee() -> uint256: view
-    def out_fee() -> uint256: view
-    def fee() -> uint256: view
-    def allowed_extra_profit() -> uint256: view
-    def fee_gamma() -> uint256: view
-    def adjustment_step() -> uint256: view
-    def admin_fee() -> uint256: view
-    def ma_half_time() -> uint256: view
-    def price_scale() -> uint256: view
-    def price_oracle() -> uint256: view
-    def last_prices() -> uint256: view
-    def token() -> address: view
-    def coins(i: uint256) -> address: view
-    def get_virtual_price() -> uint256: view
     def balances(i: uint256) -> uint256: view
     def initialize(
         A: uint256,
@@ -49,15 +21,19 @@ interface CryptoPool:
         ma_half_time: uint256,
         initial_price: uint256,
         _token: address,
-        _coins: address[2]
+        _coins: address[2],
+        _precisions: uint256
     ): nonpayable
-    def exchange(
-        i: uint256, j: uint256, dx: uint256, min_dy: uint256,
-        use_eth: bool, receiver: address, cb: Bytes[4]
-    ) -> uint256: payable
+
+interface ERC20:
+    def decimals() -> uint256: view
 
 interface LiquidityGauge:
     def initialize(_lp_token: address): nonpayable
+
+interface Token:
+    def initialize(_name: String[64], _symbol: String[32], _pool: address): nonpayable
+
 
 event CryptoPoolDeployed:
     token: address
@@ -79,13 +55,54 @@ event LiquidityGaugeDeployed:
     token: address
     gauge: address
 
+event UpdateFeeReceiver:
+    _old_fee_receiver: address
+    _new_fee_receiver: address
+
+event UpdatePoolImplementation:
+    _old_pool_implementation: address
+    _new_pool_implementation: address
+
+event UpdateTokenImplementation:
+    _old_token_implementation: address
+    _new_token_implementation: address
+
+event UpdateGaugeImplementation:
+    _old_gauge_implementation: address
+    _new_gauge_implementation: address
+
+event TransferOwnership:
+    _old_owner: address
+    _new_owner: address
+
+
+struct PoolArray:
+    token: address
+    liquidity_gauge: address
+    coins: address[2]
+    decimals: uint256
+
+
+N_COINS: constant(int128) = 2
+A_MULTIPLIER: constant(uint256) = 10000
+
+# Limits
+MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
+MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
+MAX_FEE: constant(uint256) = 10 * 10 ** 9
+
+MIN_GAMMA: constant(uint256) = 10 ** 10
+MAX_GAMMA: constant(uint256) = 2 * 10 ** 16
+
+MIN_A: constant(uint256) = N_COINS ** N_COINS * A_MULTIPLIER / 10
+MAX_A: constant(uint256) = N_COINS ** N_COINS * A_MULTIPLIER * 100000
+
+
+WETH: immutable(address)
+
 
 admin: public(address)
 future_admin: public(address)
-
-pool_list: public(address[4294967296])   # master list of pools
-pool_count: public(uint256)              # actual length of pool_list
-pool_data: HashMap[address, PoolArray]
 
 # fee receiver for plain pools
 fee_receiver: public(address)
@@ -100,38 +117,218 @@ gauge_implementation: public(address)
 markets: HashMap[uint256, address[4294967296]]
 market_counts: HashMap[uint256, uint256]
 
-WETH: immutable(address)
-
-N_COINS: constant(int128) = 2
-A_MULTIPLIER: constant(uint256) = 10000
-
-# Limits
-MAX_ADMIN_FEE: constant(uint256) = 10 * 10 ** 9
-MIN_FEE: constant(uint256) = 5 * 10 ** 5  # 0.5 bps
-MAX_FEE: constant(uint256) = 10 * 10 ** 9
-
-MIN_GAMMA: constant(uint256) = 10**10
-MAX_GAMMA: constant(uint256) = 2 * 10**16
-
-MIN_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER / 10
-MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
+pool_count: public(uint256)              # actual length of pool_list
+pool_data: HashMap[address, PoolArray]
+pool_list: public(address[4294967296])   # master list of pools
 
 
 @external
-def __init__(_fee_receiver: address,
-             _pool_implementation: address,
-             _token_implementation: address,
-             _gauge_implementation: address,
-             _weth: address):
-    self.admin = msg.sender
+def __init__(
+    _fee_receiver: address,
+    _pool_implementation: address,
+    _token_implementation: address,
+    _gauge_implementation: address,
+    _weth: address
+):
     self.fee_receiver = _fee_receiver
     self.pool_implementation = _pool_implementation
     self.token_implementation = _token_implementation
     self.gauge_implementation = _gauge_implementation
+
+    self.admin = msg.sender
     WETH = _weth
+
+    log UpdateFeeReceiver(ZERO_ADDRESS, _fee_receiver)
+    log UpdatePoolImplementation(ZERO_ADDRESS, _pool_implementation)
+    log UpdateTokenImplementation(ZERO_ADDRESS, _token_implementation)
+    log UpdateGaugeImplementation(ZERO_ADDRESS, _gauge_implementation)
+    log TransferOwnership(ZERO_ADDRESS, msg.sender)
+
+
+# <--- Pool Deployers --->
+
+@external
+def deploy_pool(
+    _name: String[32],
+    _symbol: String[10],
+    _coins: address[2],
+    A: uint256,
+    gamma: uint256,
+    mid_fee: uint256,
+    out_fee: uint256,
+    allowed_extra_profit: uint256,
+    fee_gamma: uint256,
+    adjustment_step: uint256,
+    admin_fee: uint256,
+    ma_half_time: uint256,
+    initial_price: uint256
+) -> address:
+    """
+    @notice Deploy a new pool
+    @param _name Name of the new plain pool
+    @param _symbol Symbol for the new plain pool - will be concatenated with factory symbol
+    Other parameters need some description
+    @return Address of the deployed pool
+    """
+    # Validate parameters
+    assert A > MIN_A-1
+    assert A < MAX_A+1
+    assert gamma > MIN_GAMMA-1
+    assert gamma < MAX_GAMMA+1
+    assert mid_fee > MIN_FEE-1
+    assert mid_fee < MAX_FEE-1
+    assert out_fee >= mid_fee
+    assert out_fee < MAX_FEE-1
+    assert admin_fee < 10**18+1
+    assert allowed_extra_profit < 10**16+1
+    assert fee_gamma < 10**18+1
+    assert fee_gamma > 0
+    assert adjustment_step < 10**18+1
+    assert adjustment_step > 0
+    assert ma_half_time < 7 * 86400
+    assert ma_half_time > 0
+    assert initial_price > 10**6
+    assert initial_price < 10**30
+    assert _coins[0] != _coins[1], "Duplicate coins"
+
+    decimals: uint256[2] = empty(uint256[2])
+    for i in range(2):
+        d: uint256 = ERC20(_coins[i]).decimals()
+        assert d < 19, "Max 18 decimals for coins"
+        decimals[i] = d
+    precisions: uint256 = (18 - decimals[0]) + shift(18 - decimals[1], 8)
+
+
+    name: String[64] = concat("Curve.fi Factory Crypto Pool: ", _name)
+    symbol: String[32] = concat(_symbol, "-f")
+
+    token: address = create_forwarder_to(self.token_implementation)
+    pool: address = create_forwarder_to(self.pool_implementation)
+
+    Token(token).initialize(name, symbol, pool)
+    CryptoPool(pool).initialize(
+        A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
+        adjustment_step, admin_fee, ma_half_time, initial_price,
+        token, _coins, precisions)
+
+    length: uint256 = self.pool_count
+    self.pool_list[length] = pool
+    self.pool_count = length + 1
+    self.pool_data[pool].token = token
+    self.pool_data[pool].decimals = shift(decimals[0], 8) + decimals[1]
+    self.pool_data[pool].coins = _coins
+
+    key: uint256 = bitwise_xor(convert(_coins[0], uint256), convert(_coins[1], uint256))
+    length = self.market_counts[key]
+    self.markets[key][length] = pool
+    self.market_counts[key] = length + 1
+
+    log CryptoPoolDeployed(
+        token, _coins,
+        A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
+        adjustment_step, admin_fee, ma_half_time, initial_price,
+        msg.sender)
+    return pool
+
+
+@external
+def deploy_gauge(_pool: address) -> address:
+    """
+    @notice Deploy a liquidity gauge for a factory pool
+    @param _pool Factory pool address to deploy a gauge for
+    @return Address of the deployed gauge
+    """
+    assert self.pool_data[_pool].coins[0] != ZERO_ADDRESS, "Unknown pool"
+    assert self.pool_data[_pool].liquidity_gauge == ZERO_ADDRESS, "Gauge already deployed"
+
+    gauge: address = create_forwarder_to(self.gauge_implementation)
+    token: address = self.pool_data[_pool].token
+    LiquidityGauge(gauge).initialize(token)
+    self.pool_data[_pool].liquidity_gauge = gauge
+
+    log LiquidityGaugeDeployed(_pool, token, gauge)
+    return gauge
+
+
+# <--- Admin / Guarded Functionality --->
+
+
+@external
+def set_fee_receiver(_fee_receiver: address):
+    """
+    @notice Set fee receiver
+    @param _fee_receiver Address that fees are sent to
+    """
+    assert msg.sender == self.admin  # dev: admin only
+
+    log UpdateFeeReceiver(self.fee_receiver, _fee_receiver)
+    self.fee_receiver = _fee_receiver
+
+
+@external
+def set_pool_implementation(_pool_implementation: address):
+    """
+    @notice Set pool implementation
+    @dev Set to ZERO_ADDRESS to prevent deployment of new pools
+    @param _pool_implementation Address of the new pool implementation
+    """
+    assert msg.sender == self.admin  # dev: admin only
+
+    log UpdatePoolImplementation(self.pool_implementation, _pool_implementation)
+    self.pool_implementation = _pool_implementation
+
+
+@external
+def set_token_implementation(_token_implementation: address):
+    """
+    @notice Set token implementation
+    @dev Set to ZERO_ADDRESS to prevent deployment of new pools
+    @param _token_implementation Address of the new token implementation
+    """
+    assert msg.sender == self.admin  # dev: admin only
+
+    log UpdateTokenImplementation(self.token_implementation, _token_implementation)
+    self.token_implementation = _token_implementation
+
+
+@external
+def set_gauge_implementation(_gauge_implementation: address):
+    """
+    @notice Set gauge implementation
+    @dev Set to ZERO_ADDRESS to prevent deployment of new gauges
+    @param _gauge_implementation Address of the new token implementation
+    """
+    assert msg.sender == self.admin  # dev: admin-only function
+
+    log UpdateGaugeImplementation(self.gauge_implementation, _gauge_implementation)
+    self.gauge_implementation = _gauge_implementation
+
+
+@external
+def commit_transfer_ownership(_addr: address):
+    """
+    @notice Transfer ownership of this contract to `addr`
+    @param _addr Address of the new owner
+    """
+    assert msg.sender == self.admin  # dev: admin only
+
+    self.future_admin = _addr
+
+
+@external
+def accept_transfer_ownership():
+    """
+    @notice Accept a pending ownership transfer
+    @dev Only callable by the new owner
+    """
+    assert msg.sender == self.future_admin  # dev: future admin only
+
+    log TransferOwnership(self.admin, msg.sender)
+    self.admin = msg.sender
 
 
 # <--- Factory Getters --->
+
 
 @view
 @external
@@ -149,6 +346,7 @@ def find_pool_for_coins(_from: address, _to: address, i: uint256 = 0) -> address
 
 
 # <--- Pool Getters --->
+
 
 @view
 @external
@@ -169,7 +367,8 @@ def get_decimals(_pool: address) -> uint256[2]:
     @param _pool Pool address
     @return uint256 list of decimals
     """
-    return self.pool_data[_pool].decimals
+    decimals: uint256 = self.pool_data[_pool].decimals
+    return [shift(decimals, -8), decimals % 256]
 
 
 @view
@@ -223,6 +422,10 @@ def get_gauge(_pool: address) -> address:
 @view
 @external
 def get_eth_index(_pool: address) -> uint256:
+    """
+    @notice Get the index of WETH for a pool
+    @dev Returns MAX_UINT256 if WETH is not a coin in the pool
+    """
     for i in range(2):
         if self.pool_data[_pool].coins[i] == WETH:
             return i
@@ -232,163 +435,7 @@ def get_eth_index(_pool: address) -> uint256:
 @view
 @external
 def get_token(_pool: address) -> address:
+    """
+    @notice Get the address of the LP token of a pool
+    """
     return self.pool_data[_pool].token
-
-
-# <--- Pool Deployers --->
-
-@external
-def deploy_pool(
-    _name: String[32],
-    _symbol: String[10],
-    _coins: address[2],
-    A: uint256,
-    gamma: uint256,
-    mid_fee: uint256,
-    out_fee: uint256,
-    allowed_extra_profit: uint256,
-    fee_gamma: uint256,
-    adjustment_step: uint256,
-    admin_fee: uint256,
-    ma_half_time: uint256,
-    initial_price: uint256
-) -> address:
-    """
-    @notice Deploy a new pool
-    @param _name Name of the new plain pool
-    @param _symbol Symbol for the new plain pool - will be
-                   concatenated with factory symbol
-    Other parameters need some description
-    @return Address of the deployed pool
-    """
-    # Validate parameters
-    assert A > MIN_A-1
-    assert A < MAX_A+1
-    assert gamma > MIN_GAMMA-1
-    assert gamma < MAX_GAMMA+1
-    assert mid_fee > MIN_FEE-1
-    assert mid_fee < MAX_FEE-1
-    assert out_fee >= mid_fee
-    assert out_fee < MAX_FEE-1
-    assert admin_fee < 10**18+1
-    assert allowed_extra_profit < 10**16+1
-    assert fee_gamma < 10**18+1
-    assert fee_gamma > 0
-    assert adjustment_step < 10**18+1
-    assert adjustment_step > 0
-    assert ma_half_time < 7 * 86400
-    assert ma_half_time > 0
-    assert initial_price > 10**6
-    assert initial_price < 10**30
-
-    decimals: uint256[2] = empty(uint256[2])
-    for i in range(2):
-        d: uint256 = ERC20(_coins[i]).decimals()
-        assert d < 19, "Max 18 decimals for coins"
-        decimals[i] = d
-    assert _coins[0] != _coins[1], "Duplicate coins"
-
-    name: String[64] = concat("Curve.fi Factory Crypto Pool: ", _name)
-    symbol: String[32] = concat(_symbol, "-f")
-
-    token: address = create_forwarder_to(self.token_implementation)
-    pool: address = create_forwarder_to(self.pool_implementation)
-
-    ERC20(token).initialize(name, symbol, pool)
-    CryptoPool(pool).initialize(
-        A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
-        adjustment_step, admin_fee, ma_half_time, initial_price,
-        token, _coins)
-
-    length: uint256 = self.pool_count
-    self.pool_list[length] = pool
-    self.pool_count = length + 1
-    self.pool_data[pool].token = token
-    self.pool_data[pool].decimals = decimals
-    self.pool_data[pool].coins = _coins
-
-    for i in range(2):
-        coin: address = _coins[i]
-        raw_call(
-            coin,
-            concat(
-                method_id("approve(address,uint256)"),
-                convert(pool, bytes32),
-                convert(MAX_UINT256, bytes32)
-            )
-        )
-
-    key: uint256 = bitwise_xor(convert(_coins[0], uint256), convert(_coins[1], uint256))
-    length = self.market_counts[key]
-    self.markets[key][length] = pool
-    self.market_counts[key] = length + 1
-
-    log CryptoPoolDeployed(
-        token, _coins,
-        A, gamma, mid_fee, out_fee, allowed_extra_profit, fee_gamma,
-        adjustment_step, admin_fee, ma_half_time, initial_price,
-        msg.sender)
-    return pool
-
-
-@external
-def deploy_gauge(_pool: address) -> address:
-    """
-    @notice Deploy a liquidity gauge for a factory pool
-    @param _pool Factory pool address to deploy a gauge for
-    @return Address of the deployed gauge
-    """
-    assert self.pool_data[_pool].coins[0] != ZERO_ADDRESS, "Unknown pool"
-    assert self.pool_data[_pool].liquidity_gauge == ZERO_ADDRESS, "Gauge already deployed"
-
-    gauge: address = create_forwarder_to(self.gauge_implementation)
-    token: address = self.pool_data[_pool].token
-    LiquidityGauge(gauge).initialize(token)
-    self.pool_data[_pool].liquidity_gauge = gauge
-
-    log LiquidityGaugeDeployed(_pool, token, gauge)
-    return gauge
-
-
-# <--- Admin / Guarded Functionality --->
-
-
-@external
-def set_gauge_implementation(_gauge_implementation: address):
-    assert msg.sender == self.admin  # dev: admin-only function
-
-    self.gauge_implementation = _gauge_implementation
-
-
-@external
-def commit_transfer_ownership(_addr: address):
-    """
-    @notice Transfer ownership of this contract to `addr`
-    @param _addr Address of the new owner
-    """
-    assert msg.sender == self.admin  # dev: admin only
-
-    self.future_admin = _addr
-
-
-@external
-def accept_transfer_ownership():
-    """
-    @notice Accept a pending ownership transfer
-    @dev Only callable by the new owner
-    """
-    _admin: address = self.future_admin
-    assert msg.sender == _admin  # dev: future admin only
-
-    self.admin = _admin
-    self.future_admin = ZERO_ADDRESS
-
-
-@external
-def set_fee_receiver(_fee_receiver: address):
-    """
-    @notice Set fee receiver for base and plain pools
-    @param _fee_receiver Address that fees are sent to
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    self.fee_receiver = _fee_receiver

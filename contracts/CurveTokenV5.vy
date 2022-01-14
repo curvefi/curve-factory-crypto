@@ -1,18 +1,14 @@
 # @version 0.3.1
 """
-@title Curve LP Token
+@title Curve LP Token V5
 @author Curve.Fi
-@notice Base implementation for an LP token provided for
-        supplying liquidity to `StableSwap`
-@dev Follows the ERC-20 token standard as defined at
-     https://eips.ethereum.org/EIPS/eip-20
+@notice Base implementation for an LP token provided for supplying liquidity
+@dev Follows the ERC-20 token standard as defined at https://eips.ethereum.org/EIPS/eip-20
 """
 from vyper.interfaces import ERC20
 
 implements: ERC20
 
-interface Curve:
-    def owner() -> address: view
 
 interface ERC1271:
     def isValidSignature(_hash: bytes32, _signature: Bytes[65]) -> bytes32: view
@@ -27,18 +23,6 @@ event Transfer:
     _from: indexed(address)
     _to: indexed(address)
     _value: uint256
-
-event SetName:
-    old_name: String[64]
-    old_symbol: String[32]
-    name: String[64]
-    symbol: String[32]
-    owner: address
-    time: uint256
-
-event SetMinter:
-    _old_minter: address
-    _new_minter: address
 
 
 EIP712_TYPEHASH: constant(bytes32) = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
@@ -64,25 +48,6 @@ nonces: public(HashMap[address, uint256])
 @external
 def __init__():
     self.minter = 0x0000000000000000000000000000000000000001
-
-
-@external
-def initialize(_name: String[64], _symbol: String[32], _pool: address):
-    assert self.minter == ZERO_ADDRESS  # dev: check that we call it from factory
-
-    self.name = _name
-    self.symbol = _symbol
-
-    # set as storage variable in the event that `name` ever changes
-    self.DOMAIN_SEPARATOR = keccak256(
-        _abi_encode(EIP712_TYPEHASH, keccak256(_name), keccak256(VERSION), chain.id, self)
-    )
-
-    self.minter = _pool
-    log SetMinter(ZERO_ADDRESS, _pool)
-
-    # fire a transfer event so block explorers identify the contract as an ERC20
-    log Transfer(ZERO_ADDRESS, msg.sender, 0)
 
 
 @external
@@ -276,19 +241,6 @@ def burnFrom(_to: address, _value: uint256) -> bool:
     return True
 
 
-@external
-def set_minter(_minter: address):
-    """
-    @notice Set the address allowed to mint tokens
-    @dev Emits the `SetMinter` event
-    @param _minter The address to set as the minter
-    """
-    assert msg.sender == self.minter
-
-    log SetMinter(msg.sender, _minter)
-    self.minter = _minter
-
-
 @view
 @external
 def decimals() -> uint8:
@@ -310,21 +262,16 @@ def version() -> String[8]:
 
 
 @external
-def set_name(_name: String[64], _symbol: String[32]):
-    """
-    @notice Set the token name and symbol
-    @dev Only callable by the owner of the Minter contract
-    """
-    assert Curve(self.minter).owner() == msg.sender
-
-    # avoid writing to memory, save a few gas
-    log SetName(self.name, self.symbol, _name, _symbol, msg.sender, block.timestamp)
+def initialize(_name: String[64], _symbol: String[32], _pool: address):
+    assert self.minter == ZERO_ADDRESS  # dev: check that we call it from factory
 
     self.name = _name
     self.symbol = _symbol
+    self.minter = _pool
 
-    # update domain separator
     self.DOMAIN_SEPARATOR = keccak256(
         _abi_encode(EIP712_TYPEHASH, keccak256(_name), keccak256(VERSION), chain.id, self)
     )
 
+    # fire a transfer event so block explorers identify the contract as an ERC20
+    log Transfer(ZERO_ADDRESS, msg.sender, 0)
