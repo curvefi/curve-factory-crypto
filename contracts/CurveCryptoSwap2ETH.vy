@@ -177,30 +177,6 @@ def __default__():
 # Internal Functions
 
 @internal
-def _safe_transfer(coin: address, _to: address, _amount: uint256):
-    response: Bytes[32] = raw_call(
-        coin,
-        _abi_encode(_to, _amount, method_id=method_id("transfer(address,uint256)")),
-        max_outsize=32,
-    )
-    if len(response) != 0:
-        assert convert(response, bool)
-
-
-@internal
-def _safe_transfer_from(coin: address, _from: address, _to: address, _amount: uint256):
-    response: Bytes[32] = raw_call(
-        coin,
-        _abi_encode(
-            _from, _to, _amount, method_id=method_id("transferFrom(address,address,uint256)")
-        ),
-        max_outsize=32,
-    )
-    if len(response) != 0:
-        assert convert(response, bool)  # dev: failed transfer
-
-
-@internal
 @view
 def _get_precisions() -> uint256[2]:
     p0: uint256 = self.PRECISIONS
@@ -730,7 +706,15 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     else:
         assert mvalue == 0  # dev: nonzero eth amount
         if callback_sig == EMPTY_BYTES32:
-            self._safe_transfer_from(in_coin, sender, self, dx)
+            response: Bytes[32] = raw_call(
+                in_coin,
+                _abi_encode(
+                    sender, self, dx, method_id=method_id("transferFrom(address,address,uint256)")
+                ),
+                max_outsize=32,
+            )
+            if len(response) != 0:
+                assert convert(response, bool)  # dev: failed transfer
         else:
             b: uint256 = ERC20(in_coin).balanceOf(self)
             raw_call(
@@ -746,7 +730,13 @@ def _exchange(sender: address, mvalue: uint256, i: uint256, j: uint256, dx: uint
     else:
         if out_coin == WETH20:
             WETH(WETH20).deposit(value=dy)
-        self._safe_transfer(out_coin, receiver, dy)
+        response: Bytes[32] = raw_call(
+            out_coin,
+            _abi_encode(receiver, dy, method_id=method_id("transfer(address,uint256)")),
+            max_outsize=32,
+        )
+        if len(response) != 0:
+            assert convert(response, bool)
 
     y *= prec_j
     if j > 0:
@@ -933,7 +923,18 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
             assert msg.value == amounts[i]  # dev: incorrect eth amount
         if amounts[i] > 0:
             if (not use_eth) or (coin != WETH20):
-                self._safe_transfer_from(coin, msg.sender, self, amounts[i])
+                response: Bytes[32] = raw_call(
+                    coin,
+                    _abi_encode(
+                        msg.sender,
+                        self,
+                        amounts[i],
+                        method_id=method_id("transferFrom(address,address,uint256)"),
+                    ),
+                    max_outsize=32,
+                )
+                if len(response) != 0:
+                    assert convert(response, bool)  # dev: failed transfer
                 if coin == WETH20:
                     WETH(WETH20).withdraw(amounts[i])
             amountsp[i] = xp[i] - xp_old[i]
@@ -1022,7 +1023,13 @@ def remove_liquidity(_amount: uint256, min_amounts: uint256[N_COINS],
         else:
             if coin == WETH20:
                 WETH(WETH20).deposit(value=d_balance)
-            self._safe_transfer(coin, receiver, d_balance)
+            response: Bytes[32] = raw_call(
+                coin,
+                _abi_encode(receiver, d_balance, method_id=method_id("transfer(address,uint256)")),
+                max_outsize=32,
+            )
+            if len(response) != 0:
+                assert convert(response, bool)
 
     D: uint256 = self.D
     self.D = D - D * amount / total_supply
@@ -1056,7 +1063,13 @@ def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uin
     else:
         if coin == WETH20:
             WETH(WETH20).deposit(value=dy)
-        self._safe_transfer(coin, receiver, dy)
+        response: Bytes[32] = raw_call(
+            coin,
+            _abi_encode(receiver, dy, method_id=method_id("transfer(address,uint256)")),
+            max_outsize=32,
+        )
+        if len(response) != 0:
+            assert convert(response, bool)
 
     self.tweak_price(A_gamma, xp, p, D)
 
