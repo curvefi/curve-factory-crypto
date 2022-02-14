@@ -51,9 +51,7 @@ MAX_COIN: constant(int128) = N_COINS - 1
 BASE_N_COINS: constant(int128) = 3
 N_ALL_COINS: constant(int128) = N_COINS + BASE_N_COINS - 1
 
-TETHER_IDX: constant(int128) = N_ALL_COINS - 3
-
-WETH_IDX: constant(uint256) = N_ALL_COINS - 1
+WETH_IDX: immutable(uint256)
 WETH: immutable(address)
 
 BASE_POOL: immutable(address)
@@ -64,18 +62,24 @@ is_approved: HashMap[address, HashMap[address, bool]]
 
 
 @external
-def __init__(_base_pool: address, _base_lp_token: address, _base_coins: address[BASE_N_COINS]):
+def __init__(_base_pool: address, _base_lp_token: address, _weth: address, _base_coins: address[BASE_N_COINS]):
     """
     @notice Contract constructor
     """
     BASE_POOL = _base_pool
     BASE_LP_TOKEN = _base_lp_token
     BASE_COINS = _base_coins
-    WETH = _base_coins[WETH_IDX - MAX_COIN]
+    WETH = _weth
+
+    weth_idx: uint256 = 0
+    i: uint256 = MAX_COIN
     for coin in _base_coins:
+        if coin == _weth:
+            weth_idx = i
+        i += 1
         ERC20(coin).approve(_base_pool, MAX_UINT256)
         self.is_approved[coin][_base_pool] = True
-
+    WETH_IDX = weth_idx
 
 
 @payable
@@ -139,16 +143,12 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
     # Receive coin i
     base_i: uint256 = i - MAX_COIN
     eth_amount: uint256 = 0
-    i_amount: uint256 = _dx
     if i == WETH_IDX and _use_eth:
         assert msg.value == _dx  # dev: incorrect ETH amount
         eth_amount = _dx
     else:
         assert msg.value == 0  # dev: nonzero ETH amount
         ERC20(base_coins[base_i]).transferFrom(msg.sender, self, _dx)
-        # Handle potential Tether fees
-        if i == TETHER_IDX:
-            i_amount = ERC20(base_coins[base_i]).balanceOf(self)
 
     # Add in base and exchange LP token
     if j < MAX_COIN:
@@ -156,7 +156,7 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
             wETH(WETH).deposit(value=eth_amount)
 
         amounts: uint256[BASE_N_COINS] = empty(uint256[BASE_N_COINS])
-        amounts[base_i] = i_amount
+        amounts[base_i] = _dx
 
         CurveBase(BASE_POOL).add_liquidity(amounts, 0)
 
@@ -169,7 +169,7 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
 
     base_j: uint256 = j - MAX_COIN
 
-    CurveBase(BASE_POOL).exchange(base_i, base_j, i_amount, _min_dy, _use_eth, value=eth_amount)
+    CurveBase(BASE_POOL).exchange(base_i, base_j, _dx, _min_dy, _use_eth, value=eth_amount)
 
     coin_amount: uint256 = self.balance
     if j == WETH_IDX and _use_eth:
@@ -275,11 +275,7 @@ def add_liquidity(
         coin: address = base_coins[base_idx]
 
         ERC20(coin).transferFrom(msg.sender, self, amount)
-        # Handle potential Tether fees
-        if i == TETHER_IDX:
-            base_amounts[base_idx] = ERC20(coin).balanceOf(self)
-        else:
-            base_amounts[base_idx] = amount
+        base_amounts[base_idx] = amount
 
     # Deposit to the base pool
     if deposit_base:

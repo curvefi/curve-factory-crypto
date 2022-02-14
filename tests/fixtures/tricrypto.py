@@ -8,15 +8,14 @@ LP_PRICE_USD = 3 * (1000 * 10 ** 18 + 300)  # 3 * (p1 * p2) ^ 1/3, added 300 for
 
 
 @pytest.fixture(scope="module")
-def base_coins(ERC20Mock, WETH, alice, dave, eve):
-    coins = [
+def base_coins(ERC20Mock, weth, alice, dave, eve):
+    dave.transfer(weth, dave.balance())
+    eve.transfer(weth, eve.balance())
+    yield [
         ERC20Mock.deploy("Tether USD", "USDT", 6, {"from": alice}),
         ERC20Mock.deploy("Wrapped BTC", "WBTC", 8, {"from": alice}),
-        WETH.deploy({"from": alice}),
+        weth,
     ]
-    dave.transfer(coins[-1], dave.balance())
-    eve.transfer(coins[-1], eve.balance())
-    yield coins
 
 
 @pytest.fixture(scope="module")

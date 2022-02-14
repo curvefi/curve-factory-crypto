@@ -40,8 +40,8 @@ def meta_token(CurveTokenV5, meta_swap):
 
 
 @pytest.fixture(scope="module")
-def zap(ZapETH, base_swap, base_token, base_coins, accounts):
-    yield ZapETH.deploy(base_swap, base_token, base_coins, {"from": accounts[0]})
+def zap(ZapETH, base_swap, base_token, weth, base_coins, accounts):
+    yield ZapETH.deploy(base_swap, base_token, weth, base_coins, {"from": accounts[0]})
 
 
 @pytest.fixture(scope="module")
