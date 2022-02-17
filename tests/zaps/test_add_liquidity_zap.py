@@ -95,22 +95,3 @@ def test_calc_token_amount(zap, meta_swap, meta_token, bob, initial_amounts_unde
     zap.add_liquidity(meta_swap, amounts, 0, {"from": bob})
 
     assert meta_token.balanceOf(bob) == calculated
-
-
-def test_use_eth(
-    alice, bob, charlie, zap, meta_swap, underlying_coins, coins, initial_amounts_underlying
-):
-    amounts = [a // 50 for a in initial_amounts_underlying]
-    for coin, amount in zip(underlying_coins[:-1], amounts[:-1]):
-        coin.transfer(charlie, amount, {"from": bob})
-        coin.approve(zap, amount, {"from": charlie})
-
-    zap.add_liquidity(meta_swap, amounts, 0, True, {"from": charlie, "value": amounts[-1]})
-
-    assert zap.balance() == 0
-    for coin, initial_amount, amount in zip(underlying_coins, initial_amounts_underlying, amounts):
-        assert coin.balanceOf(zap) == 0
-        if coin in coins:
-            assert coin.balanceOf(meta_swap) == initial_amount + amount
-        else:
-            assert coin.balanceOf(meta_swap) == 0

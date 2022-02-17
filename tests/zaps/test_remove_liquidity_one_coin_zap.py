@@ -53,22 +53,3 @@ def test_calc_withdraw_one_coin(alice, bob, zap, underlying_coins, meta_swap, me
     zap.remove_liquidity_one_coin(meta_swap, lp_amount, idx, 0, {"from": bob})
 
     assert underlying_coins[idx].balanceOf(bob) == calculated
-
-
-def test_use_eth(
-    alice, bob, zap, underlying_coins, initial_amounts_underlying, meta_swap, meta_token
-):
-    divisor = 50
-    initial_amount = meta_token.balanceOf(alice)
-    amount = initial_amount // divisor
-    initial_balance = bob.balance()
-
-    meta_token.transfer(bob, initial_amount, {"from": alice})
-    zap.remove_liquidity_one_coin(meta_swap, amount, 3, 0, True, {"from": bob})
-
-    assert zap.balance() == 0
-    assert meta_token.balanceOf(zap) == 0
-
-    assert meta_token.balanceOf(bob) == initial_amount - amount
-    assert underlying_coins[-1].balanceOf(bob) == 0
-    assert 0 < (bob.balance() - initial_balance) <= 6 * initial_amounts_underlying[-1] // divisor

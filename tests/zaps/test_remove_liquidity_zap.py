@@ -78,30 +78,3 @@ def test_amount_exceeds_balance(alice, meta_swap, zap, underlying_coins):
     amount = (2000000 * 10 ** 18) + 1
     with brownie.reverts():
         zap.remove_liquidity(meta_swap, amount, [0, 0, 0, 0], {"from": alice})
-
-
-def test_use_eth(
-    bob,
-    meta_swap,
-    meta_token,
-    zap,
-    underlying_coins,
-    coins,
-    initial_amounts_underlying,
-):
-    initial_balance = meta_token.balanceOf(bob)
-    withdraw_amount = initial_balance // 50
-    min_amounts = [0] * len(underlying_coins)
-    zap.remove_liquidity(meta_swap, withdraw_amount, min_amounts, True, {"from": bob})
-
-    assert zap.balance() == 0
-    for coin in underlying_coins[1:-1]:
-        assert coin.balanceOf(zap) == 0
-        assert coin.balanceOf(meta_swap) == 0
-        assert coin.balanceOf(bob) > 0
-
-    weth = underlying_coins[-1]
-    assert weth.balanceOf(zap) == 0
-    assert weth.balanceOf(meta_swap) == 0
-    assert weth.balanceOf(bob) == 0
-    assert bob.balance() > 0
