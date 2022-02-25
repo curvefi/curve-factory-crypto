@@ -105,7 +105,9 @@ def test_remove_liquidity_one_coin(
 
     assert meta_token.balanceOf(bob) == initial_amount - amount
     assert underlying_coins[weth_idx].balanceOf(bob) == 0
-    assert 0 < (bob.balance() - initial_balance) <= 6 * initial_amounts_underlying[weth_idx] // divisor
+    assert (
+        0 < (bob.balance() - initial_balance) <= 6 * initial_amounts_underlying[weth_idx] // divisor
+    )
 
 
 def test_remove_liquidity(

@@ -28,7 +28,9 @@ def test_underlying_balances(
             assert balance == 0
 
 
-def test_wrapped_balances(bob, zap, meta_swap, coins, weth, initial_amounts_underlying, initial_amounts):
+def test_wrapped_balances(
+    bob, zap, meta_swap, coins, weth, initial_amounts_underlying, initial_amounts
+):
     zap.add_liquidity(meta_swap, initial_amounts_underlying, 0, {"from": bob})
 
     for coin, amount in zip(coins, initial_amounts):

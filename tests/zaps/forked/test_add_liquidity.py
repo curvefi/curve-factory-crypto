@@ -109,7 +109,12 @@ def test_one_coin_use_eth(
     with balances_do_not_change(underlying_coins + [meta_token, base_token], alice):
         calculated = zap.calc_token_amount(meta_swap, amounts)
         lp_received = zap.add_liquidity(
-            meta_swap, amounts, 0.99 * calculated, True, bob, {"from": alice, "value": amounts[weth_idx]}
+            meta_swap,
+            amounts,
+            0.99 * calculated,
+            True,
+            bob,
+            {"from": alice, "value": amounts[weth_idx]},
         ).return_value
 
     zap_has_zero_amounts()

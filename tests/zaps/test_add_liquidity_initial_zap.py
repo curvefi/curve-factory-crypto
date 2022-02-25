@@ -4,7 +4,17 @@ import pytest
 pytestmark = pytest.mark.usefixtures("mint_bob_underlying", "approve_zap")
 
 
-def test_lp_token_balances(bob, zap, meta_swap, meta_token, initial_amounts_underlying, base_swap, base_token, underlying_coins, weth):
+def test_lp_token_balances(
+    bob,
+    zap,
+    meta_swap,
+    meta_token,
+    initial_amounts_underlying,
+    base_swap,
+    base_token,
+    underlying_coins,
+    weth,
+):
     zap.add_liquidity(meta_swap, initial_amounts_underlying, 0, {"from": bob})
 
     assert meta_token.balanceOf(bob) > 0
@@ -25,7 +35,9 @@ def test_underlying_balances(
             assert balance == 0
 
 
-def test_wrapped_balances(bob, zap, meta_swap, coins, weth, initial_amounts_underlying, initial_amounts):
+def test_wrapped_balances(
+    bob, zap, meta_swap, coins, weth, initial_amounts_underlying, initial_amounts
+):
     zap.add_liquidity(meta_swap, initial_amounts_underlying, 0, {"from": bob})
 
     for coin, amount in zip(coins, initial_amounts):
