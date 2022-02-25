@@ -41,6 +41,7 @@ def test_remove_liquidity_use_eth(
     underlying_coins,
     balances_do_not_change,
     zap_has_zero_amounts,
+    weth_idx,
 ):
     lp_initial_amount = meta_token.balanceOf(alice)
     initial_balance = bob.balance()
@@ -56,7 +57,9 @@ def test_remove_liquidity_use_eth(
 
     zap_has_zero_amounts()
 
-    for coin, amount in zip(underlying_coins[:-1], amounts_received[:-1]):
+    for i, (coin, amount) in enumerate(zip(underlying_coins, amounts_received)):
+        if i == weth_idx:
+            continue
         assert coin.balanceOf(bob) == amount > 0
-    assert underlying_coins[-1].balanceOf(bob) == 0
-    assert bob.balance() - initial_balance == amounts_received[-1] > 0
+    assert underlying_coins[weth_idx].balanceOf(bob) == 0
+    assert bob.balance() - initial_balance == amounts_received[weth_idx] > 0

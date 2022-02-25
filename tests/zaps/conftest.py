@@ -2,13 +2,18 @@ import pytest
 
 from tests.fixtures.tricrypto import LP_PRICE_USD
 
-INITIAL_PRICES = [int(8 * LP_PRICE_USD // 10)]  # 0.8 -- usd to euro
+INITIAL_PRICES = [int(LP_PRICE_USD // 10 ** 4 + 1)]  # usd to eth, added 1 for errors
+
+
+@pytest.fixture(scope="session", autouse=True, params=[0, 3])
+def weth_idx(request):
+    yield request.param
 
 
 @pytest.fixture(scope="module")
-def coins(ERC20Mock, base_token, accounts):
+def coins(base_token, weth, seth, weth_idx):
     yield [
-        ERC20Mock.deploy("Euro", "EUR", 18, {"from": accounts[0]}),
+        weth if weth_idx == 0 else seth,
         base_token,
     ]
 
@@ -61,14 +66,14 @@ def approve_zap(zap, alice, bob, underlying_coins, base_token, meta_token, coins
 
 @pytest.fixture(scope="session")
 def initial_amount_usd():
-    return 1_000_000
+    return 100_000
 
 
 @pytest.fixture(scope="module")
 def initial_amounts(is_forked, base_swap, meta_swap, coins, initial_amount_usd):
     if not is_forked:
         return [
-            3 * 800_000 * 10 ** (18 + coin.decimals()) // price
+            3 * initial_amount_usd * 10 ** (18 - 4 + coin.decimals()) // price
             for price, coin in zip([10 ** 18] + INITIAL_PRICES, coins)
         ]
 
@@ -79,9 +84,7 @@ def initial_amounts(is_forked, base_swap, meta_swap, coins, initial_amount_usd):
 
     amounts = [0, 3 * initial_amount_usd * 10 ** 36 // (lp_token_price + 1000)]
     amounts[0] = amounts[1] * meta_swap.price_scale() // 10 ** (36 - coins[0].decimals())
-    # assert False
     return amounts
-    # return [(3 * 8 * initial_amount_usd // 10) * 10 ** (18 + coin.decimals()) // price for price, coin in zip([10 ** 18] + INITIAL_PRICES, coins)]
 
 
 @pytest.fixture(scope="module")

@@ -25,7 +25,7 @@ def test_multiple_coins(
     zap_has_zero_amounts()
 
     assert meta_token.balanceOf(bob) == lp_received > 0
-    assert abs(lp_received - calculated) <= 1
+    assert abs(lp_received - calculated) <= 100
 
 
 @pytest.mark.parametrize("idx", range(4))
@@ -53,7 +53,7 @@ def test_one_coin(
     zap_has_zero_amounts()
 
     assert meta_token.balanceOf(bob) == lp_received > 0
-    assert abs(lp_received - calculated) <= 1
+    assert abs(lp_received - calculated) <= 100
 
 
 def test_multiple_coins_use_eth(
@@ -67,9 +67,11 @@ def test_multiple_coins_use_eth(
     bob,
     balances_do_not_change,
     zap_has_zero_amounts,
+    weth,
+    weth_idx,
 ):
     initial_balance = alice.balance()
-    with balances_do_not_change([underlying_coins[-1], meta_token, base_token], alice):
+    with balances_do_not_change([weth, meta_token, base_token], alice):
         calculated = zap.calc_token_amount(meta_swap, amounts_underlying)
         lp_received = zap.add_liquidity(
             meta_swap,
@@ -82,10 +84,10 @@ def test_multiple_coins_use_eth(
 
     zap_has_zero_amounts()
 
-    assert alice.balance() == initial_balance - amounts_underlying[-1]
+    assert alice.balance() == initial_balance - amounts_underlying[weth_idx]
 
     assert meta_token.balanceOf(bob) == lp_received > 0
-    assert abs(lp_received - calculated) <= 1
+    assert abs(lp_received - calculated) <= 100
 
 
 def test_one_coin_use_eth(
@@ -99,6 +101,7 @@ def test_one_coin_use_eth(
     bob,
     balances_do_not_change,
     zap_has_zero_amounts,
+    weth_idx,
 ):
     initial_balance = alice.balance()
     amounts = [0] * len(amounts_underlying)
@@ -106,12 +109,12 @@ def test_one_coin_use_eth(
     with balances_do_not_change(underlying_coins + [meta_token, base_token], alice):
         calculated = zap.calc_token_amount(meta_swap, amounts)
         lp_received = zap.add_liquidity(
-            meta_swap, amounts, 0.99 * calculated, True, bob, {"from": alice, "value": amounts[-1]}
+            meta_swap, amounts, 0.99 * calculated, True, bob, {"from": alice, "value": amounts[weth_idx]}
         ).return_value
 
     zap_has_zero_amounts()
 
-    assert alice.balance() == initial_balance - amounts[-1]
+    assert alice.balance() == initial_balance - amounts[weth_idx]
 
     assert meta_token.balanceOf(bob) == lp_received > 0
     assert abs(lp_received - calculated) <= 1

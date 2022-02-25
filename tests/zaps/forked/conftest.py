@@ -1,5 +1,7 @@
 import pytest
+import json
 from brownie_tokens import MintableForkToken
+from brownie.project.main import get_loaded_projects
 
 EURT = "0xC581b735A1688071A1746c968e0798D642EDE491"
 COINS = [
@@ -10,6 +12,14 @@ COINS = [
 SWAP = "0xD51a44d3FaE010294C616388b506AcdA1bfAAE46"
 TOKEN = "0xc4AD29ba4B3c580e6D59105FFf484999997675Ff"
 FACTORY = "0xF18056Bbd320E96A48e3Fbf8bC061322531aac99"
+
+
+@pytest.fixture(scope="module")
+def weth(weth, is_forked):
+    if not is_forked:
+        yield weth
+    else:
+        yield MintableForkToken(COINS[-1])
 
 
 @pytest.fixture(scope="module")
@@ -70,7 +80,7 @@ def amounts_underlying(underlying_coins):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def pre_mining(alice, zap, underlying_coins, base_token, meta_token, amounts_underlying):
+def pre_mining(alice, zap, underlying_coins, weth, weth_idx, base_token, meta_token, amounts_underlying):
     """Mint a bunch of test tokens"""
     meta_token.approve(zap, 2 ** 256 - 1, {"from": alice})
     base_token.approve(zap, 2 ** 256 - 1, {"from": alice})
@@ -79,9 +89,8 @@ def pre_mining(alice, zap, underlying_coins, base_token, meta_token, amounts_und
         coin.approve(zap, 2 ** 256 - 1, {"from": alice})
 
     # Get ETH
-    weth = underlying_coins[-1]
-    weth._mint_for_testing(alice, amounts_underlying[-1], {"from": alice})
-    weth.withdraw(amounts_underlying[-1], {"from": alice})
+    weth._mint_for_testing(alice, amounts_underlying[weth_idx], {"from": alice})
+    weth.withdraw(amounts_underlying[weth_idx], {"from": alice})
 
 
 @pytest.fixture(scope="module", autouse=True)

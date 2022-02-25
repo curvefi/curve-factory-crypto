@@ -30,11 +30,12 @@ def test_remove_liquidity(alice, bob, zap, meta_swap, meta_token, underlying_coi
         assert coin.balanceOf(bob) == expected_amount
 
 
-def test_remove_one(alice, bob, zap, underlying_coins, coins, meta_swap, meta_token):
+@pytest.mark.parametrize("idx", range(4))
+def test_remove_one(alice, bob, zap, underlying_coins, coins, meta_swap, meta_token, idx):
     meta_token.transfer(bob, meta_token.balanceOf(alice), {"from": alice})
-    tx = zap.remove_liquidity_one_coin(meta_swap, 10 ** 18, 1, 0, {"from": bob})
+    tx = zap.remove_liquidity_one_coin(meta_swap, 10 ** 18, idx, 0, {"from": bob})
 
-    assert tx.return_value == underlying_coins[1].balanceOf(bob)
+    assert tx.return_value == underlying_coins[idx].balanceOf(bob)
 
 
 def test_add_liquidity(

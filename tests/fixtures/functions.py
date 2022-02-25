@@ -49,7 +49,7 @@ def add_initial_liquidity(
 
 @pytest.fixture(scope="module")
 def get_dy(underlying_coins):
-    all_prices = [1_250 * 10 ** 15, 10 ** 18] + INITIAL_PRICES_BASE
+    all_prices = [10_000 * 10 ** 18, 10 ** 18] + INITIAL_PRICES_BASE
 
     def inner(i: int, j: int, dx: int):
         return (

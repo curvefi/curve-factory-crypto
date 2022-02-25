@@ -4,22 +4,27 @@ INITIAL_PRICES_BASE = [
     100_000 * 10 ** 18,
     10_000 * 10 ** 18,
 ]  # prices chosen, so qubic root is integer
-LP_PRICE_USD = 3 * (1000 * 10 ** 18 + 300)  # 3 * (p1 * p2) ^ 1/3, added 300 for errors
+LP_PRICE_USD = 3 * 1000 * 10 ** 18  # 3 * (p1 * p2) ^ 1/3
 
 
 @pytest.fixture(scope="module")
-def base_coins(ERC20Mock, weth, alice, dave, eve):
+def seth(ERC20Mock, alice):
+    yield ERC20Mock.deploy("Second eth", "SETH", 18, {"from": alice})
+
+
+@pytest.fixture(scope="module")
+def base_coins(ERC20Mock, seth, weth, weth_idx, alice, dave, eve):
     dave.transfer(weth, dave.balance())
     eve.transfer(weth, eve.balance())
     yield [
         ERC20Mock.deploy("Tether USD", "USDT", 6, {"from": alice}),
         ERC20Mock.deploy("Wrapped BTC", "WBTC", 8, {"from": alice}),
-        weth,
+        weth if weth_idx == 3 else seth,
     ]
 
 
 @pytest.fixture(scope="module")
-def base_token(CurveTokenV4, alice, bob):
+def base_token(CurveTokenV4, alice, bob, weth_idx):
     yield CurveTokenV4.deploy("Curve.fi USD-BTC-ETH", "crv3crypto", {"from": alice})
 
 

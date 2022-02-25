@@ -39,7 +39,7 @@ def test_exchange(
     assert abs(received - calculated) <= 1
 
 
-@pytest.mark.parametrize("j", range(3))
+@pytest.mark.parametrize("di", range(1, 4))
 def test_exchange_use_eth_in(
     zap,
     base_token,
@@ -51,9 +51,11 @@ def test_exchange_use_eth_in(
     bob,
     balances_do_not_change,
     zap_has_zero_amounts,
-    j,
+    di,
+    weth_idx,
 ):
-    i = 3
+    i = weth_idx
+    j = (i + di) % len(underlying_coins)
     initial_balance_alice = alice.balance()
     initial_balance_bob = bob.balance()
     dx = amounts_underlying[i]
@@ -73,7 +75,7 @@ def test_exchange_use_eth_in(
     assert abs(received - calculated) <= 1
 
 
-@pytest.mark.parametrize("i", range(3))
+@pytest.mark.parametrize("di", range(1, 4))
 def test_exchange_use_eth_out(
     zap,
     base_token,
@@ -84,9 +86,11 @@ def test_exchange_use_eth_out(
     bob,
     balances_do_not_change,
     zap_has_zero_amounts,
-    i: int,
+    di,
+    weth_idx,
 ):
-    j = 3
+    j = weth_idx
+    i = (j + di) % len(underlying_coins)
     initial_balance = bob.balance()
     dx = underlying_coins[i].balanceOf(alice)
     with balances_do_not_change(

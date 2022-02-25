@@ -15,24 +15,26 @@ def test_lp_token_balances(
 
 
 def test_underlying_balances(
-    bob, zap, meta_swap, underlying_coins, coins, initial_amounts_underlying
+    bob, zap, meta_swap, underlying_coins, coins, weth, initial_amounts_underlying
 ):
     zap.add_liquidity(meta_swap, initial_amounts_underlying, 0, {"from": bob})
 
     for coin, amount in zip(underlying_coins, initial_amounts_underlying):
         assert coin.balanceOf(zap) == 0
+        balance = meta_swap.balance() if coin == weth else coin.balanceOf(meta_swap)
         if coin in coins:
-            assert coin.balanceOf(meta_swap) == amount * 2
+            assert balance == amount * 2
         else:
-            assert coin.balanceOf(meta_swap) == 0
+            assert balance == 0
 
 
-def test_wrapped_balances(bob, zap, meta_swap, coins, initial_amounts_underlying, initial_amounts):
+def test_wrapped_balances(bob, zap, meta_swap, coins, weth, initial_amounts_underlying, initial_amounts):
     zap.add_liquidity(meta_swap, initial_amounts_underlying, 0, {"from": bob})
 
     for coin, amount in zip(coins, initial_amounts):
         assert coin.balanceOf(zap) == 0
-        assert 0.9999 < coin.balanceOf(meta_swap) / (amount * 2) <= 1
+        balance = meta_swap.balance() if coin == weth else coin.balanceOf(meta_swap)
+        assert 0.9999 < balance / (amount * 2) <= 1
 
 
 @pytest.mark.parametrize("idx", range(4))
@@ -94,4 +96,4 @@ def test_calc_token_amount(zap, meta_swap, meta_token, bob, initial_amounts_unde
     calculated = zap.calc_token_amount(meta_swap, amounts)
     zap.add_liquidity(meta_swap, amounts, 0, {"from": bob})
 
-    assert meta_token.balanceOf(bob) == calculated
+    assert abs(meta_token.balanceOf(bob) - calculated) <= 1
