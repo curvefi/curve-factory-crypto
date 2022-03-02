@@ -82,7 +82,7 @@ def __default__():
 
 @internal
 def _receive(_coin: address, _amount: uint256, _from: address,
-             _eth_value: uint256, _use_eth: bool, _wrap_eth: bool=False):
+             _eth_value: uint256, _use_eth: bool, _wrap_eth: bool=False) -> uint256:
     """
     Transfer coin to zap
     @param _coin Address of the coin
@@ -91,11 +91,14 @@ def _receive(_coin: address, _amount: uint256, _from: address,
     @param _eth_value Eth value sent
     @param _use_eth Use raw ETH
     @param _wrap_eth Wrap raw ETH
+    @return Received ETH amount
     """
     if _use_eth and _coin == WETH:
         assert _eth_value == _amount  # dev: incorrect ETH amount
         if _wrap_eth:
             wETH(WETH).deposit(value=_amount)
+        else:
+            return _amount
     else:
         response: Bytes[32] = raw_call(
             _coin,
@@ -109,6 +112,7 @@ def _receive(_coin: address, _amount: uint256, _from: address,
         )
         if len(response) != 0:
             assert convert(response, bool)  # dev: failed transfer
+    return 0
 
 
 @internal
@@ -127,7 +131,8 @@ def _send(_coin: address, _to: address, _use_eth: bool, _withdraw_eth: bool=Fals
         if _withdraw_eth:
             amount = ERC20(_coin).balanceOf(self)
             wETH(WETH).withdraw(amount)
-        raw_call(_to, b"", value=self.balance)
+        amount = self.balance
+        raw_call(_to, b"", value=amount)
     else:
         amount = ERC20(_coin).balanceOf(self)
         response: Bytes[32] = raw_call(
@@ -164,11 +169,11 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
     if i < MAX_COIN:  # Swap to LP token and remove from base
         # Receive and swap to LP Token
         coin: address = CurveMeta(_pool).coins(i)
-        self._receive(coin, _dx, msg.sender, msg.value, _use_eth)
+        eth_amount: uint256 = self._receive(coin, _dx, msg.sender, msg.value, _use_eth)
         if not self.is_approved[coin][_pool]:
             ERC20(coin).approve(_pool, MAX_UINT256)
             self.is_approved[coin][_pool] = True
-        lp_amount: uint256 = CurveMeta(_pool).exchange(i, MAX_COIN, _dx, 0, _use_eth, value=self.balance)
+        lp_amount: uint256 = CurveMeta(_pool).exchange(i, MAX_COIN, _dx, 0, _use_eth, value=eth_amount)
 
         # Remove and send to _receiver
         CurveBase(BASE_POOL).remove_liquidity_one_coin(lp_amount, j - MAX_COIN, _min_dy)
@@ -257,10 +262,11 @@ def add_liquidity(
     base_amounts: uint256[BASE_N_COINS] = empty(uint256[BASE_N_COINS])
     deposit_base: bool = False
     base_coins: address[BASE_N_COINS] = BASE_COINS
+    eth_amount: uint256 = 0
 
     if _deposit_amounts[0] != 0:
         coin: address = CurveMeta(_pool).coins(0)
-        self._receive(coin, _deposit_amounts[0], msg.sender, msg.value, _use_eth)
+        eth_amount = self._receive(coin, _deposit_amounts[0], msg.sender, msg.value, _use_eth)
         if not self.is_approved[coin][_pool]:
             ERC20(coin).approve(_pool, MAX_UINT256)
             self.is_approved[coin][_pool] = True
@@ -288,7 +294,7 @@ def add_liquidity(
             self.is_approved[coin][_pool] = True
 
     # Deposit to the meta pool
-    return CurveMeta(_pool).add_liquidity(meta_amounts, _min_mint_amount, _use_eth, _receiver, value=self.balance)
+    return CurveMeta(_pool).add_liquidity(meta_amounts, _min_mint_amount, _use_eth, _receiver, value=eth_amount)
 
 
 @view
