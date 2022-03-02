@@ -105,7 +105,7 @@ def test_one_coin_use_eth(
 ):
     initial_balance = alice.balance()
     amounts = [0] * len(amounts_underlying)
-    amounts[-1] = amounts_underlying[-1]
+    amounts[weth_idx] = amounts_underlying[weth_idx]
     with balances_do_not_change(underlying_coins + [meta_token, base_token], alice):
         calculated = zap.calc_token_amount(meta_swap, amounts)
         lp_received = zap.add_liquidity(
