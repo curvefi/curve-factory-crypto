@@ -1,0 +1,15 @@
+{
+  "swap": "0x76147c0C989670D106b57763a24410A2a22e335E",
+  "token": "0x99E8eD28B97c7F1878776eD94fFC77CABFB9B726",
+  "coins": [
+    "0xEf977d2f931C1978Db5F6747666fa1eACB0d0339",
+    "0x985458e523db3d53125813ed68c274899e9dfab4",
+    "0x3c2b8be99c50593081eaa2a724f0b8285f5aba8f",
+    "0x3095c7557bcb296ccc6e363de01b760ba031f2d9",
+    "0x6983d1e6def3690c4d616b13597a09e6193ea013"
+  ],
+  "weth_idx": 0,
+  "weth": "0xcF664087a5bB0237a0BAd6742852ec6c8d69A27a",
+  "factory": "",
+  "debug_available": false
+}
