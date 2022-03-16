@@ -3,6 +3,7 @@ from brownie._config import CONFIG
 
 pytest_plugins = [
     "tests.fixtures.accounts",
+    "tests.fixtures.forked_coins",
     "tests.fixtures.functions",
     "tests.fixtures.tricrypto",
 ]

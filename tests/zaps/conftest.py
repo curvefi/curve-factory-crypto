@@ -45,8 +45,11 @@ def meta_token(CurveTokenV5, meta_swap):
 
 
 @pytest.fixture(scope="module")
-def zap(ZapETH, base_swap, base_token, weth, base_coins, accounts):
-    yield ZapETH.deploy(base_swap, base_token, weth, base_coins, {"from": accounts[0]})
+def zap(ZapETH, ZapETHZap, base_swap, base_token, weth, base_coins, accounts):
+    if len(base_coins) == 3:
+        yield ZapETH.deploy(base_swap, base_token, weth, base_coins, {"from": accounts[0]})
+    else:
+        yield ZapETHZap.deploy(base_swap, base_token, weth, base_coins, {"from": accounts[0]})
 
 
 @pytest.fixture(scope="module")
@@ -70,21 +73,34 @@ def initial_amount_usd():
 
 
 @pytest.fixture(scope="module")
-def initial_amounts(is_forked, base_swap, meta_swap, coins, initial_amount_usd):
+def initial_prices(Tricrypto, is_forked, base_swap, meta_swap):
+    """
+    Meta pool coins prices in first base pool coin
+    """
     if not is_forked:
-        return [
-            3 * initial_amount_usd * 10 ** (18 - 4 + coin.decimals()) // price
-            for price, coin in zip([10 ** 18] + INITIAL_PRICES, coins)
-        ]
+        return [LP_PRICE_USD * 10 ** 18 // INITIAL_PRICES[0], LP_PRICE_USD + 1000]
 
+    if hasattr(base_swap, "pool"):  # Zap
+        base_swap = Tricrypto.at(base_swap.pool())
     vp = base_swap.virtual_price() or 10 ** 18  # 0 when empty
     p1 = base_swap.price_oracle(0)
     p2 = base_swap.price_oracle(1)
-    lp_token_price = 3 * vp * int(p1 ** (1 / 3)) * int(p2 ** (1 / 3)) // 10 ** (18 - 6)
+    lp_token_price = (
+        3 * vp * int(p1 ** (1 / 3)) * int(p2 ** (1 / 3)) // 10 ** (18 - 6) + 1000
+    )  # 1000 for calc errors
 
-    amounts = [0, 3 * initial_amount_usd * 10 ** 36 // (lp_token_price + 1000)]
-    amounts[0] = amounts[1] * meta_swap.price_scale() // 10 ** (36 - coins[0].decimals())
-    return amounts
+    return [
+        lp_token_price * 10 ** 18 // meta_swap.price_scale(),
+        lp_token_price,
+    ]
+
+
+@pytest.fixture(scope="module")
+def initial_amounts(is_forked, base_swap, meta_swap, coins, initial_amount_usd, initial_prices):
+    return [  # 18 - 4 + decimals
+        3 * initial_amount_usd * 10 ** (18 + coin.decimals()) // price
+        for price, coin in zip(initial_prices, coins)
+    ]
 
 
 @pytest.fixture(scope="module")
@@ -95,3 +111,8 @@ def initial_amounts_underlying(initial_amounts, initial_amounts_base):
 @pytest.fixture(scope="module")
 def underlying_coins(base_coins, coins):
     return coins[:-1] + base_coins
+
+
+@pytest.fixture(scope="module")
+def underlying_prices(initial_prices, initial_prices_base):
+    return initial_prices[:-1] + initial_prices_base

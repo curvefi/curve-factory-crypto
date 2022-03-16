@@ -16,6 +16,7 @@ def test_exchange(
     zap_has_zero_amounts,
     i: int,
     di: int,
+    debug_available,
 ):
     j = (i + di) % 4
     initial_balance = bob.balance()
@@ -25,9 +26,8 @@ def test_exchange(
         alice,
     ):
         calculated = zap.get_dy(meta_swap, i, j, dx)
-        received = zap.exchange(
-            meta_swap, i, j, dx, 0.99 * calculated, False, bob, {"from": alice}
-        ).return_value
+        tx = zap.exchange(meta_swap, i, j, dx, 0.99 * calculated, False, bob, {"from": alice})
+        received = tx.return_value if debug_available else underlying_coins[j].balanceOf(bob)
 
     zap_has_zero_amounts()
 
@@ -36,7 +36,7 @@ def test_exchange(
     assert underlying_coins[i].balanceOf(bob) == 0
     assert underlying_coins[j].balanceOf(bob) == received > 0
     assert bob.balance() == initial_balance
-    assert abs(received - calculated) <= 1
+    assert abs(received - calculated) <= 10 ** underlying_coins[j].decimals()
 
 
 @pytest.mark.parametrize("di", range(1, 4))
@@ -53,6 +53,7 @@ def test_exchange_use_eth_in(
     zap_has_zero_amounts,
     di,
     weth_idx,
+    debug_available,
 ):
     i = weth_idx
     j = (i + di) % len(underlying_coins)
@@ -61,9 +62,10 @@ def test_exchange_use_eth_in(
     dx = amounts_underlying[i]
     with balances_do_not_change(underlying_coins + [meta_token, base_token], alice):
         calculated = zap.get_dy(meta_swap, i, j, dx)
-        received = zap.exchange(
+        tx = zap.exchange(
             meta_swap, i, j, dx, 0.99 * calculated, True, bob, {"from": alice, "value": dx}
-        ).return_value
+        )
+        received = tx.return_value if debug_available else underlying_coins[j].balanceOf(bob)
 
     zap_has_zero_amounts()
 
@@ -72,7 +74,7 @@ def test_exchange_use_eth_in(
     assert underlying_coins[i].balanceOf(bob) == 0
     assert underlying_coins[j].balanceOf(bob) == received > 0
     assert bob.balance() == initial_balance_bob
-    assert abs(received - calculated) <= 1
+    assert abs(received - calculated) <= 10 ** underlying_coins[j].decimals()
 
 
 @pytest.mark.parametrize("di", range(1, 4))
@@ -88,6 +90,7 @@ def test_exchange_use_eth_out(
     zap_has_zero_amounts,
     di,
     weth_idx,
+    debug_available,
 ):
     j = weth_idx
     i = (j + di) % len(underlying_coins)
@@ -98,9 +101,8 @@ def test_exchange_use_eth_out(
         alice,
     ):
         calculated = zap.get_dy(meta_swap, i, j, dx)
-        received = zap.exchange(
-            meta_swap, i, j, dx, 0.99 * calculated, True, bob, {"from": alice}
-        ).return_value
+        tx = zap.exchange(meta_swap, i, j, dx, 0.99 * calculated, True, bob, {"from": alice})
+        received = tx.return_value if debug_available else bob.balance() - initial_balance
 
     zap_has_zero_amounts()
 
@@ -109,4 +111,4 @@ def test_exchange_use_eth_out(
     assert underlying_coins[i].balanceOf(bob) == 0
     assert underlying_coins[j].balanceOf(bob) == 0
     assert bob.balance() - initial_balance == received > 0
-    assert abs(received - calculated) <= 1
+    assert abs(received - calculated) <= 10 ** 18

@@ -3,8 +3,6 @@ from contextlib import contextmanager
 import pytest
 from brownie import ETH_ADDRESS
 
-from .tricrypto import INITIAL_PRICES_BASE
-
 MAX_UINT = 2 ** 256 - 1
 
 
@@ -39,24 +37,29 @@ def add_initial_liquidity(
     initial_amounts_underlying,
     alice,
     mint_alice_underlying,
+    is_forked,
 ):
     base_swap.add_liquidity(
         initial_amounts_underlying[len(initial_amounts) - 1:], 0, {"from": alice}
     )
-    assert base_token.balanceOf(alice) >= initial_amounts[-1], "bad initial_amounts"
+    if is_forked:  # Sometimes calculations fail
+        assert int(base_token.balanceOf(alice)) == pytest.approx(
+            initial_amounts[-1], rel=2e-2  # virtual price of 3pool is not counted => may have such big error
+        ), "bad initial_amounts"
+        initial_amounts[-1] = base_token.balanceOf(alice)
+    else:
+        assert base_token.balanceOf(alice) >= initial_amounts[-1], "bad initial_amounts"
     meta_swap.add_liquidity(initial_amounts, 0, {"from": alice})
 
 
 @pytest.fixture(scope="module")
-def get_dy(underlying_coins):
-    all_prices = [10_000 * 10 ** 18, 10 ** 18] + INITIAL_PRICES_BASE
-
+def get_dy(underlying_coins, underlying_prices):
     def inner(i: int, j: int, dx: int):
         return (
             dx
-            * all_prices[i]
+            * underlying_prices[i]
             * 10 ** underlying_coins[j].decimals()
-            // (all_prices[j] * 10 ** underlying_coins[i].decimals())
+            // (underlying_prices[j] * 10 ** underlying_coins[i].decimals())
         )
 
     return inner

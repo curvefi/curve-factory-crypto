@@ -1,68 +1,79 @@
-import pytest
 import json
-from brownie_tokens import MintableForkToken
+
+import pytest
+from brownie import Contract, interface
 from brownie.project.main import get_loaded_projects
 
-EURT = "0xC581b735A1688071A1746c968e0798D642EDE491"
-COINS = [
-    "0xdAC17F958D2ee523a2206206994597C13D831ec7",  # usdt
-    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",  # wbtc
-    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # weth
-]
-SWAP = "0xD51a44d3FaE010294C616388b506AcdA1bfAAE46"
-TOKEN = "0xc4AD29ba4B3c580e6D59105FFf484999997675Ff"
-FACTORY = "0xF18056Bbd320E96A48e3Fbf8bC061322531aac99"
+_data = {}
+
+
+def pytest_addoption(parser):
+    parser.addoption("--deployed_data", help="addresses of deployed contracts")
+
+
+def pytest_generate_tests(metafunc):
+    deployed_data = metafunc.config.getoption("deployed_data", None)
+    weth_indexes = [0, 3]
+    if deployed_data:
+        project = get_loaded_projects()[0]
+        with open(
+            f"{project._path}/contracts/testing/tricrypto/data/{deployed_data}.json", "r"
+        ) as f:
+            global _data
+            _data = json.load(f)
+        weth_indexes = [_data["weth_idx"]]
+    metafunc.parametrize("weth_idx", weth_indexes, indirect=True, scope="session")
+    if "mintable_fork_token" in metafunc.fixturenames:
+        metafunc.parametrize("mintable_fork_token", [deployed_data], indirect=True, scope="session")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def debug_available():
+    """debug_traceTransaction"""
+    yield _data.get("debug_available", True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def weth_idx(request):
+    yield request.param
 
 
 @pytest.fixture(scope="module")
-def weth(weth, is_forked):
+def weth(weth, mintable_fork_token, is_forked):
     if not is_forked:
         yield weth
     else:
-        yield MintableForkToken(COINS[-1])
+        yield mintable_fork_token(_data["weth"])
 
 
 @pytest.fixture(scope="module")
-def base_coins(base_coins, is_forked):
+def base_coins(base_coins, mintable_fork_token, is_forked):
     if not is_forked:
         yield base_coins
     else:
-        yield [MintableForkToken(addr) for addr in COINS]
+        yield [mintable_fork_token(addr) for addr in _data["coins"]]
 
 
 @pytest.fixture(scope="module")
-def base_swap(base_swap, is_forked, Tricrypto):
-    if not is_forked:
-        yield base_swap
-    else:
-        yield Tricrypto.at(SWAP)
+def base_swap(Tricrypto, base_swap, base_coins, is_forked):
+    yield base_swap or (
+        Tricrypto.at(_data["swap"])
+        if len(base_coins) == 3
+        else Contract.from_abi("TricryptoZap", _data["swap"], interface.TricryptoZap.abi)
+    )
 
 
 @pytest.fixture(scope="module")
 def base_token(base_token, is_forked, CurveTokenV4):
-    if not is_forked:
-        yield base_token
-    else:
-        yield CurveTokenV4.at(TOKEN)
+    yield base_token or CurveTokenV4.at(_data["token"])
 
 
 @pytest.fixture(scope="module")
 def factory(factory, is_forked, Factory):
-    if not is_forked:
+    if not is_forked or not _data["factory"]:
         yield factory
     else:
-        yield Factory.at(FACTORY)
-
-
-@pytest.fixture(scope="module")
-def coins(coins, is_forked, base_token):
-    if not is_forked:
-        yield coins
-    else:
-        yield [
-            MintableForkToken(EURT),
-            base_token,
-        ]
+        yield Factory.at(_data["factory"])
 
 
 @pytest.fixture(scope="session")
@@ -80,7 +91,9 @@ def amounts_underlying(underlying_coins):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def pre_mining(alice, zap, underlying_coins, weth, weth_idx, base_token, meta_token, amounts_underlying):
+def pre_mining(
+    alice, zap, underlying_coins, weth, weth_idx, base_token, meta_token, amounts_underlying
+):
     """Mint a bunch of test tokens"""
     meta_token.approve(zap, 2 ** 256 - 1, {"from": alice})
     base_token.approve(zap, 2 ** 256 - 1, {"from": alice})
