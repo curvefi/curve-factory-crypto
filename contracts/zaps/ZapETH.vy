@@ -54,7 +54,7 @@ WETH: immutable(address)
 
 BASE_POOL: immutable(address)
 BASE_LP_TOKEN: immutable(address)
-BASE_COINS: immutable(address[3])
+BASE_COINS: immutable(address[BASE_N_COINS])
 # coin -> pool -> is approved to transfer?
 is_approved: HashMap[address, HashMap[address, bool]]
 
