@@ -10,6 +10,6 @@
   ],
   "weth_idx": 0,
   "weth": "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7",
-  "factory": "",
+  "factory": "0xE5De15A9C9bBedb4F5EC13B131E61245f2983A69",
   "debug_available": false
 }
