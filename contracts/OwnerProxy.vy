@@ -130,6 +130,7 @@ def commit_new_parameters(
     _new_ma_half_time: uint256,
 ):
     assert msg.sender == self.parameter_admin, "Access denied"
+    assert _new_mid_fee != 0  # dev: prevent reinitialization
     Curve(_pool).commit_new_parameters(
         _new_mid_fee,
         _new_out_fee,
