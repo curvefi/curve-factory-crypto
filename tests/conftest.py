@@ -1,4 +1,12 @@
 import pytest
+from brownie._config import CONFIG
+
+pytest_plugins = [
+    "tests.fixtures.accounts",
+    "tests.fixtures.forked_coins",
+    "tests.fixtures.functions",
+    "tests.fixtures.tricrypto",
+]
 
 INITIAL_PRICES = [int(0.8 * 10 ** 18)]  # 1/eur
 
@@ -70,3 +78,8 @@ def crypto_swap_with_deposit(crypto_swap, coins, accounts):
 @pytest.fixture(autouse=True)
 def isolation(fn_isolation):
     pass
+
+
+@pytest.fixture(scope="session")
+def is_forked():
+    return "fork" in CONFIG.active_network["id"]
