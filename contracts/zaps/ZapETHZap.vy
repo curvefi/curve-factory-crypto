@@ -1,4 +1,4 @@
-# @version 0.3.1
+# @version 0.3.3
 """
 @title Zap for Curve Factory
 @license MIT
@@ -32,7 +32,7 @@ interface CurveMeta:
     def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uint256, use_eth: bool = False, receiver: address = msg.sender) -> uint256: nonpayable
 
 
-# TriCrypto pool
+# Meta TriCrypto pool zap
 interface CurveBase:
     def coins(i: uint256) -> address: view
     def token() -> address: view
@@ -45,14 +45,14 @@ interface CurveBase:
     def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uint256): nonpayable
 
 
-N_COINS: constant(int128) = 2
-MAX_COIN: constant(int128) = N_COINS - 1
-BASE_N_COINS: constant(int128) = 5
-N_ALL_COINS: constant(int128) = N_COINS + BASE_N_COINS - 1
+N_COINS: constant(uint256) = 2
+MAX_COIN: constant(uint256) = N_COINS - 1
+BASE_N_COINS: constant(uint256) = 5
+N_ALL_COINS: constant(uint256) = N_COINS + BASE_N_COINS - 1
 
-WETH: immutable(address)
+WETH: immutable(wETH)
 
-BASE_POOL: immutable(address)
+BASE_POOL: immutable(CurveBase)
 BASE_LP_TOKEN: immutable(address)
 BASE_COINS: immutable(address[BASE_N_COINS])
 # coin -> pool -> is approved to transfer?
@@ -64,10 +64,10 @@ def __init__(_base_pool: address, _base_lp_token: address, _weth: address, _base
     """
     @notice Contract constructor
     """
-    BASE_POOL = _base_pool
+    BASE_POOL = CurveBase(_base_pool)
     BASE_LP_TOKEN = _base_lp_token
     BASE_COINS = _base_coins
-    WETH = _weth
+    WETH = wETH(_weth)
 
     for coin in _base_coins:
         ERC20(coin).approve(_base_pool, MAX_UINT256)
@@ -83,6 +83,18 @@ def __default__():
     assert msg.sender.is_contract  # dev: receive only from pools and WETH
 
 
+@pure
+@external
+def base_pool() -> address:
+    return BASE_POOL.address
+
+
+@pure
+@external
+def base_token() -> address:
+    return BASE_LP_TOKEN
+
+
 @internal
 def _receive(_coin: address, _amount: uint256, _from: address,
              _eth_value: uint256, _use_eth: bool, _wrap_eth: bool=False) -> uint256:
@@ -96,10 +108,10 @@ def _receive(_coin: address, _amount: uint256, _from: address,
     @param _wrap_eth Wrap raw ETH
     @return Received ETH amount
     """
-    if _use_eth and _coin == WETH:
+    if _use_eth and _coin == WETH.address:
         assert _eth_value == _amount  # dev: incorrect ETH amount
         if _wrap_eth:
-            wETH(WETH).deposit(value=_amount)
+            WETH.deposit(value=_amount)
         else:
             return _amount
     else:
@@ -130,10 +142,10 @@ def _send(_coin: address, _to: address, _use_eth: bool, _withdraw_eth: bool=Fals
     @return Amount of coin sent
     """
     amount: uint256 = 0
-    if _use_eth and _coin == WETH:
+    if _use_eth and _coin == WETH.address:
         if _withdraw_eth:
             amount = ERC20(_coin).balanceOf(self)
-            wETH(WETH).withdraw(amount)
+            WETH.withdraw(amount)
         amount = self.balance
         raw_call(_to, b"", value=amount)
     else:
@@ -179,7 +191,7 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
         lp_amount: uint256 = CurveMeta(_pool).exchange(i, MAX_COIN, _dx, 0, _use_eth, value=eth_amount)
 
         # Remove and send to _receiver
-        CurveBase(BASE_POOL).remove_liquidity_one_coin(lp_amount, j - MAX_COIN, _min_dy)
+        BASE_POOL.remove_liquidity_one_coin(lp_amount, j - MAX_COIN, _min_dy)
 
         coin = base_coins[j - MAX_COIN]
         return self._send(coin, _receiver, _use_eth, True)
@@ -193,7 +205,7 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
         amounts: uint256[BASE_N_COINS] = empty(uint256[BASE_N_COINS])
         amounts[base_i] = _dx
 
-        CurveBase(BASE_POOL).add_liquidity(amounts, 0)
+        BASE_POOL.add_liquidity(amounts, 0)
 
         if not self.is_approved[BASE_LP_TOKEN][_pool]:
             ERC20(BASE_LP_TOKEN).approve(_pool, MAX_UINT256)
@@ -204,7 +216,7 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
 
     base_j: uint256 = j - MAX_COIN
 
-    CurveBase(BASE_POOL).exchange_underlying(base_i, base_j, _dx, _min_dy)
+    BASE_POOL.exchange_underlying(base_i, base_j, _dx, _min_dy)
 
     coin: address = base_coins[base_j]
     return self._send(coin, _receiver, _use_eth, True)
@@ -227,17 +239,17 @@ def get_dy(_pool: address, i: uint256, j: uint256, _dx: uint256) -> uint256:
     if i < MAX_COIN:  # Swap to LP token and remove from base
         lp_amount: uint256 = CurveMeta(_pool).get_dy(i, MAX_COIN, _dx)
 
-        return CurveBase(BASE_POOL).calc_withdraw_one_coin(lp_amount, j - MAX_COIN)
+        return BASE_POOL.calc_withdraw_one_coin(lp_amount, j - MAX_COIN)
 
     # Add in base and exchange LP token
     if j < MAX_COIN:
         amounts: uint256[BASE_N_COINS] = empty(uint256[BASE_N_COINS])
         amounts[i - MAX_COIN] = _dx
-        lp_amount: uint256 = CurveBase(BASE_POOL).calc_token_amount(amounts, True)
+        lp_amount: uint256 = BASE_POOL.calc_token_amount(amounts, True)
 
         return CurveMeta(_pool).get_dy(MAX_COIN, j, lp_amount)
 
-    return CurveBase(BASE_POOL).get_dy_underlying(i - MAX_COIN, j - MAX_COIN, _dx)
+    return BASE_POOL.get_dy_underlying(i - MAX_COIN, j - MAX_COIN, _dx)
 
 
 @payable
@@ -288,7 +300,7 @@ def add_liquidity(
 
     # Deposit to the base pool
     if deposit_base:
-        CurveBase(BASE_POOL).add_liquidity(base_amounts, 0)
+        BASE_POOL.add_liquidity(base_amounts, 0)
         coin: address = BASE_LP_TOKEN
         meta_amounts[MAX_COIN] = ERC20(coin).balanceOf(self)
         if not self.is_approved[coin][_pool]:
@@ -321,7 +333,7 @@ def calc_token_amount(_pool: address, _amounts: uint256[N_ALL_COINS]) -> uint256
             deposit_base = True
 
     if deposit_base:
-        base_tokens: uint256 = CurveBase(BASE_POOL).calc_token_amount(base_amounts, True)
+        base_tokens: uint256 = BASE_POOL.calc_token_amount(base_amounts, True)
         meta_amounts[MAX_COIN] = base_tokens
 
     return CurveMeta(_pool).calc_token_amount(meta_amounts)
@@ -362,7 +374,7 @@ def remove_liquidity(
     # Withdraw from base
     for i in range(BASE_N_COINS):
         min_amounts_base[i] = _min_amounts[MAX_COIN + i]
-    CurveBase(BASE_POOL).remove_liquidity(lp_amount, min_amounts_base)
+    BASE_POOL.remove_liquidity(lp_amount, min_amounts_base)
 
     # Transfer all coins out
     coin: address = CurveMeta(_pool).coins(0)
@@ -404,7 +416,7 @@ def remove_liquidity_one_coin(
     # Withdraw a base pool coin
     coin_amount: uint256 = CurveMeta(_pool).remove_liquidity_one_coin(_burn_amount, MAX_COIN, 0)
 
-    CurveBase(BASE_POOL).remove_liquidity_one_coin(coin_amount, i - MAX_COIN, _min_amount)
+    BASE_POOL.remove_liquidity_one_coin(coin_amount, i - MAX_COIN, _min_amount)
 
     coin: address = BASE_COINS[i - MAX_COIN]
     return self._send(coin, _receiver, _use_eth, True)
@@ -424,5 +436,4 @@ def calc_withdraw_one_coin(_pool: address, _token_amount: uint256, i: uint256) -
         return CurveMeta(_pool).calc_withdraw_one_coin(_token_amount, i)
 
     _base_tokens: uint256 = CurveMeta(_pool).calc_withdraw_one_coin(_token_amount, MAX_COIN)
-
-    return CurveBase(BASE_POOL).calc_withdraw_one_coin(_base_tokens, i - MAX_COIN)
+    return BASE_POOL.calc_withdraw_one_coin(_base_tokens, i - MAX_COIN)
