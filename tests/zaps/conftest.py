@@ -88,9 +88,9 @@ def meta_token(CurveTokenV5, meta_swap):
 
 
 @pytest.fixture(scope="module")
-def zap(ZapETH, ZapETHZap, Zap3pool, zap_base, base_swap, base_token, weth, base_coins, accounts):
+def zap(ZapETH, ZapETHZap, Zap3PoolETH, zap_base, base_swap, base_token, weth, base_coins, accounts):
     if zap_base == "3pool":
-        contract = Zap3pool
+        contract = Zap3PoolETH
     elif len(base_coins) == 3:
         contract = ZapETH
     else:

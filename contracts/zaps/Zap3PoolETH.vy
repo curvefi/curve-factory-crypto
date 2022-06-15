@@ -3,7 +3,7 @@
 @title Zap for Curve Factory
 @license MIT
 @author Curve.Fi
-@notice Zap for tricrypto metapools created via factory
+@notice Zap for 3pool metapools created via factory
 """
 
 
