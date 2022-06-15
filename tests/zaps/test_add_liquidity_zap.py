@@ -36,7 +36,7 @@ def test_wrapped_balances(
     for coin, amount in zip(coins, initial_amounts):
         assert coin.balanceOf(zap) == 0
         balance = meta_swap.balance() if coin == weth else coin.balanceOf(meta_swap)
-        assert 0.9999 < balance / (amount * 2) <= 1
+        assert 0.9999 < balance / (amount * 2) <= 1 + 1e-8
 
 
 @pytest.mark.parametrize("idx", range(4))
@@ -89,7 +89,7 @@ def test_min_amount_with_slippage(bob, meta_swap, zap, initial_amounts_underlyin
         zap.add_liquidity(meta_swap, amounts, 2 * 10 ** 18, {"from": bob})
 
 
-def test_calc_token_amount(zap, meta_swap, meta_token, bob, initial_amounts_underlying):
+def test_calc_token_amount(zap, zap_base, meta_swap, meta_token, bob, initial_amounts_underlying):
     amounts = [
         amount // divisor
         for amount, divisor in zip(initial_amounts_underlying, [10, 50, 100, 1000])
@@ -98,4 +98,8 @@ def test_calc_token_amount(zap, meta_swap, meta_token, bob, initial_amounts_unde
     calculated = zap.calc_token_amount(meta_swap, amounts)
     zap.add_liquidity(meta_swap, amounts, 0, {"from": bob})
 
-    assert abs(meta_token.balanceOf(bob) - calculated) <= 1
+    if zap_base == "3pool":
+        # 3pool calc_token_amount does not take fee into account
+        assert int(meta_token.balanceOf(bob)) == pytest.approx(calculated, rel=1e-4)
+    else:
+        assert int(meta_token.balanceOf(bob)) == pytest.approx(calculated, abs=1)

@@ -43,7 +43,7 @@ def test_wrapped_balances(
     for coin, amount in zip(coins, initial_amounts):
         assert coin.balanceOf(zap) == 0
         balance = meta_swap.balance() if coin == weth else coin.balanceOf(meta_swap)
-        assert 0.9999 < balance / amount <= 1
+        assert 0.9999 < balance / amount <= 1 + 1e-8
 
 
 @pytest.mark.parametrize("idx", range(4))

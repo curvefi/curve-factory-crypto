@@ -13,16 +13,15 @@ def pytest_addoption(parser):
 
 def pytest_generate_tests(metafunc):
     deployed_data = metafunc.config.getoption("deployed_data", None)
-    weth_indexes = [0, 3]
     if deployed_data:
+        zap_base = metafunc.config.getoption("zap_base")
         project = get_loaded_projects()[0]
         with open(
-            f"{project._path}/contracts/testing/tricrypto/data/{deployed_data}.json", "r"
+            f"{project._path}/contracts/testing/{zap_base}/data/{deployed_data}.json", "r"
         ) as f:
             global _data
             _data = json.load(f)
-        weth_indexes = [_data["weth_idx"]]
-    metafunc.parametrize("weth_idx", weth_indexes, indirect=True, scope="session")
+        metafunc.parametrize(["zap_base", "weth_idx"], [(zap_base, _data["weth_idx"])], indirect=True, scope="session")
     if "mintable_fork_token" in metafunc.fixturenames:
         metafunc.parametrize("mintable_fork_token", [deployed_data], indirect=True, scope="session")
 
@@ -31,6 +30,11 @@ def pytest_generate_tests(metafunc):
 def debug_available():
     """debug_traceTransaction"""
     yield _data.get("debug_available", True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def zap_base(request):
+    yield request.param
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -55,17 +59,27 @@ def base_coins(base_coins, mintable_fork_token, is_forked):
 
 
 @pytest.fixture(scope="module")
-def base_swap(Tricrypto, base_swap, base_coins, is_forked):
-    yield base_swap or (
-        Tricrypto.at(_data["swap"])
-        if len(base_coins) == 3
-        else Contract.from_abi("TricryptoZap", _data["swap"], interface.TricryptoZap.abi)
-    )
+def base_swap(zap_base, Tricrypto, StableSwap3Pool, base_swap, base_coins, is_forked):
+    if not is_forked:
+        return base_swap
+    if zap_base == "3pool":
+        return StableSwap3Pool.at(_data["swap"])
+    elif zap_base == "tricrypto":
+        return (
+            Tricrypto.at(_data["swap"])
+            if len(base_coins) == 3
+            else Contract.from_abi("TricryptoZap", _data["swap"], interface.TricryptoZap.abi)
+        )
 
 
 @pytest.fixture(scope="module")
-def base_token(base_token, is_forked, CurveTokenV4):
-    yield base_token or CurveTokenV4.at(_data["token"])
+def base_token(zap_base, base_token, is_forked, CurveTokenV2, CurveTokenV4):
+    if not is_forked:
+        return base_token
+    if zap_base == "3pool":
+        return CurveTokenV2.at(_data["token"])
+    elif zap_base == "tricrypto":
+        return CurveTokenV4.at(_data["token"])
 
 
 @pytest.fixture(scope="module")

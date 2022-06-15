@@ -1,0 +1,12 @@
+{
+  "swap": "0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7",
+  "token": "0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490",
+  "coins": [
+    "0x6b175474e89094c44da98b954eedeac495271d0f",
+    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "0xdac17f958d2ee523a2206206994597c13d831ec7"
+  ],
+  "weth_idx": 0,
+  "weth": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "factory": "0xF18056Bbd320E96A48e3Fbf8bC061322531aac99"
+}

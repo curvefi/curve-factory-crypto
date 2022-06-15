@@ -2,10 +2,37 @@ import pytest
 
 from tests.fixtures.tricrypto import LP_PRICE_USD
 
-INITIAL_PRICES = [int(LP_PRICE_USD // 10 ** 4 + 1)]  # usd to eth, added 1 for errors
+
+def pytest_addoption(parser):
+    parser.addoption("--zap_base", action="store", default=["tricrypto", "3pool"], help="Base pool of zap to test")
 
 
-@pytest.fixture(scope="session", autouse=True, params=[0, 3])
+def pytest_generate_tests(metafunc):
+    deployed_data = metafunc.config.getoption("deployed_data", None)
+    if deployed_data:
+        # Test in fork
+        # Will be set in forked/conftest.py
+        return
+
+    zap_base = metafunc.config.getoption("zap_base")
+    zap_bases = zap_base if isinstance(zap_base, list) else [zap_base]
+    values = []
+    for base in zap_bases:
+        if base == "tricrypto":
+            values.extend([(base, 0), (base, 3)])
+        elif base == "3pool":
+            values.append((base, 0))
+        else:
+            raise ValueError(f"Unknown zap base: {base}")
+    metafunc.parametrize(["zap_base", "weth_idx"], values, indirect=True, scope="session")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def zap_base(request):
+    yield request.param
+
+
+@pytest.fixture(scope="session", autouse=True)
 def weth_idx(request):
     yield request.param
 
@@ -19,7 +46,23 @@ def coins(base_token, weth, seth, weth_idx):
 
 
 @pytest.fixture(scope="module")
-def meta_swap(CurveCryptoSwap2ETH, factory, coins, alice):
+def initial_price(zap_base):
+    if zap_base == "3pool":
+        return 10 ** (18 - 4)
+    elif zap_base == "tricrypto":
+        return int(LP_PRICE_USD // 10 ** 4 + 1)  # usd to eth, added 1 for errors
+
+
+@pytest.fixture(scope="module")
+def lp_price_usd(zap_base):
+    if zap_base == "3pool":
+        return 10 ** 18
+    elif zap_base == "tricrypto":
+        return LP_PRICE_USD
+
+
+@pytest.fixture(scope="module")
+def meta_swap(CurveCryptoSwap2ETH, factory, coins, initial_price, alice):
     address = factory.deploy_pool(
         "euro/tricrypto metapool",
         "EUR/3CRV",
@@ -33,7 +76,7 @@ def meta_swap(CurveCryptoSwap2ETH, factory, coins, alice):
         int(0.55e-5 * 1e18),  # adjustment_step
         0,  # admin_fee
         600,  # ma_half_time
-        INITIAL_PRICES[0],
+        initial_price,
         {"from": alice},
     ).return_value
     yield CurveCryptoSwap2ETH.at(address)
@@ -45,11 +88,14 @@ def meta_token(CurveTokenV5, meta_swap):
 
 
 @pytest.fixture(scope="module")
-def zap(ZapETH, ZapETHZap, base_swap, base_token, weth, base_coins, accounts):
-    if len(base_coins) == 3:
-        yield ZapETH.deploy(base_swap, base_token, weth, base_coins, {"from": accounts[0]})
+def zap(ZapETH, ZapETHZap, Zap3pool, zap_base, base_swap, base_token, weth, base_coins, accounts):
+    if zap_base == "3pool":
+        contract = Zap3pool
+    elif len(base_coins) == 3:
+        contract = ZapETH
     else:
-        yield ZapETHZap.deploy(base_swap, base_token, weth, base_coins, {"from": accounts[0]})
+        contract = ZapETHZap
+    return contract.deploy(base_swap, base_token, weth, base_coins, {"from": accounts[0]})
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +108,7 @@ def approve_zap(zap, alice, bob, underlying_coins, base_token, meta_token, coins
     meta_token.approve(zap, MAX_UINT256, {"from": alice})
     meta_token.approve(zap, MAX_UINT256, {"from": bob})
 
-    for coin in coins + underlying_coins:
+    for coin in coins[:-1] + underlying_coins:
         coin.approve(zap, MAX_UINT256, {"from": alice})
         coin.approve(zap, MAX_UINT256, {"from": bob})
 
@@ -73,12 +119,61 @@ def initial_amount_usd():
 
 
 @pytest.fixture(scope="module")
-def initial_prices(Tricrypto, is_forked, base_swap, meta_swap):
+def base_coins(zap_base, tricrypto_coins, tripool_coins):
+    if zap_base == "tricrypto":
+        return tricrypto_coins
+    elif zap_base == "3pool":
+        return tripool_coins
+
+
+@pytest.fixture(scope="module")
+def base_token(zap_base, tricrypto_token, tripool_token):
+    if zap_base == "tricrypto":
+        return tricrypto_token
+    elif zap_base == "3pool":
+        return tripool_token
+
+
+@pytest.fixture(scope="module")
+def base_swap(zap_base, tricrypto, tripool):
+    if zap_base == "tricrypto":
+        return tricrypto
+    elif zap_base == "3pool":
+        return tripool
+
+
+@pytest.fixture(scope="module")
+def initial_prices_base(zap_base, tricrypto_initial_prices, tripool_initial_prices):
+    if zap_base == "tricrypto":
+        return tricrypto_initial_prices
+    elif zap_base == "3pool":
+        return tripool_initial_prices
+
+
+@pytest.fixture(scope="module")
+def initial_amounts_base(base_coins, initial_amount_usd, initial_prices_base):
+    usd_cnt = len(base_coins) - 2
+    amounts = [
+        initial_amount_usd * 10 ** (18 + coin.decimals()) // (usd_cnt * price)
+        for price, coin in zip(initial_prices_base[:usd_cnt], base_coins[:usd_cnt])
+    ]
+    return amounts + [
+        initial_amount_usd * 10 ** (18 + coin.decimals()) // price
+        for price, coin in zip(initial_prices_base[usd_cnt:], base_coins[usd_cnt:])
+    ]
+
+
+@pytest.fixture(scope="module")
+def initial_prices(zap_base, Tricrypto, is_forked, base_swap, meta_swap, initial_price, lp_price_usd):
     """
     Meta pool coins prices in first base pool coin
     """
     if not is_forked:
-        return [LP_PRICE_USD * 10 ** 18 // INITIAL_PRICES[0], LP_PRICE_USD + 1000]
+        return [lp_price_usd * 10 ** 18 // initial_price, lp_price_usd + 1000]
+
+    if zap_base == "3pool":
+        vp = base_swap.get_virtual_price()
+        return [10 ** 36 // meta_swap.price_scale(), vp]
 
     if hasattr(base_swap, "pool"):  # Zap
         base_swap = Tricrypto.at(base_swap.pool())
