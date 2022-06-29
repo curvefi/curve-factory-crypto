@@ -3,7 +3,7 @@
 @title Zap for Curve Factory
 @license MIT
 @author Curve.Fi
-@notice Zap for tricrypto metapools created via factory
+@notice Zap for 3pool metapools created via factory
 """
 
 
@@ -23,6 +23,10 @@ interface wETH:
 interface CurveMeta:
     def coins(i: uint256) -> address: view
     def token() -> address: view
+    def lp_price() -> uint256: view
+    def price_scale() -> uint256: view
+    def price_oracle() -> uint256: view
+    def virtual_price() -> uint256: view
     def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256: view
     def calc_token_amount(amounts: uint256[N_COINS]) -> uint256: view
     def calc_withdraw_one_coin(token_amount: uint256, i: uint256) -> uint256: view
@@ -36,13 +40,14 @@ interface CurveMeta:
 interface CurveBase:
     def coins(i: uint256) -> address: view
     def token() -> address: view
-    def get_dy(i: uint256, j: uint256, dx: uint256) -> uint256: view
-    def calc_token_amount(amounts: uint256[BASE_N_COINS], deposit: bool) -> uint256: view
-    def calc_withdraw_one_coin(token_amount: uint256, i: uint256) -> uint256: view
-    def exchange(i: uint256, j: uint256, dx: uint256, min_dy: uint256): payable
-    def add_liquidity(amounts: uint256[BASE_N_COINS], min_mint_amount: uint256): payable
-    def remove_liquidity(_amount: uint256, min_amounts: uint256[BASE_N_COINS]): nonpayable
-    def remove_liquidity_one_coin(token_amount: uint256, i: uint256, min_amount: uint256): nonpayable
+    def get_dy(i: int128, j: int128, dx: uint256) -> uint256: view
+    def calc_token_amount(amounts: uint256[BASE_N_COINS], is_deposit: bool) -> uint256: view
+    def calc_withdraw_one_coin(token_amount: uint256, i: int128) -> uint256: view
+    def exchange(i: int128, j: int128, dx: uint256, min_dy: uint256): nonpayable
+    def add_liquidity(amounts: uint256[BASE_N_COINS], min_mint_amount: uint256): nonpayable
+    def remove_liquidity_one_coin(token_amount: uint256, i: int128, min_amount: uint256): nonpayable
+    def remove_liquidity(amount: uint256, min_amounts: uint256[BASE_N_COINS]): nonpayable
+    def get_virtual_price() -> uint256: view
 
 
 N_COINS: constant(uint256) = 2
@@ -90,6 +95,31 @@ def base_pool() -> address:
 @external
 def base_token() -> address:
     return BASE_LP_TOKEN
+
+
+@external
+@view
+def price_oracle(_pool: address) -> uint256:
+    usd_tkn: uint256 = CurveMeta(_pool).price_oracle()
+    vprice: uint256 = BASE_POOL.get_virtual_price()
+    return vprice * 10**18 / usd_tkn
+
+
+@external
+@view
+def price_scale(_pool: address) -> uint256:
+    usd_tkn: uint256 = CurveMeta(_pool).price_scale()
+    vprice: uint256 = BASE_POOL.get_virtual_price()
+    return vprice * 10**18 / usd_tkn
+
+
+@external
+@view
+def lp_price(_pool: address) -> uint256:
+    p: uint256 = CurveMeta(_pool).lp_price()  # price in tkn
+    usd_tkn: uint256 = CurveMeta(_pool).price_oracle()
+    vprice: uint256 = BASE_POOL.get_virtual_price()
+    return p * vprice / usd_tkn
 
 
 @internal
@@ -188,13 +218,13 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
         lp_amount: uint256 = CurveMeta(_pool).exchange(i, MAX_COIN, _dx, 0, _use_eth, value=eth_amount)
 
         # Remove and send to _receiver
-        BASE_POOL.remove_liquidity_one_coin(lp_amount, j - MAX_COIN, _min_dy)
+        BASE_POOL.remove_liquidity_one_coin(lp_amount, convert(j - MAX_COIN, int128), _min_dy)
 
         coin = base_coins[j - MAX_COIN]
         return self._send(coin, _receiver, _use_eth, True)
 
     # Receive coin i
-    base_i: uint256 = i - MAX_COIN
+    base_i: int128 = convert(i - MAX_COIN, int128)
     self._receive(base_coins[base_i], _dx, msg.sender, msg.value, _use_eth, True)
 
     # Add in base and exchange LP token
@@ -211,7 +241,7 @@ def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint
         lp_amount: uint256 = ERC20(BASE_LP_TOKEN).balanceOf(self)
         return CurveMeta(_pool).exchange(MAX_COIN, j, lp_amount, _min_dy, _use_eth, _receiver)
 
-    base_j: uint256 = j - MAX_COIN
+    base_j: int128 = convert(j - MAX_COIN, int128)
 
     BASE_POOL.exchange(base_i, base_j, _dx, _min_dy)
 
@@ -236,7 +266,7 @@ def get_dy(_pool: address, i: uint256, j: uint256, _dx: uint256) -> uint256:
     if i < MAX_COIN:  # Swap to LP token and remove from base
         lp_amount: uint256 = CurveMeta(_pool).get_dy(i, MAX_COIN, _dx)
 
-        return BASE_POOL.calc_withdraw_one_coin(lp_amount, j - MAX_COIN)
+        return BASE_POOL.calc_withdraw_one_coin(lp_amount, convert(j - MAX_COIN, int128))
 
     # Add in base and exchange LP token
     if j < MAX_COIN:
@@ -247,7 +277,7 @@ def get_dy(_pool: address, i: uint256, j: uint256, _dx: uint256) -> uint256:
         return CurveMeta(_pool).get_dy(MAX_COIN, j, lp_amount)
 
     # Exchange in base
-    return BASE_POOL.get_dy(i - MAX_COIN, j - MAX_COIN, _dx)
+    return BASE_POOL.get_dy(convert(i - MAX_COIN, int128), convert(j - MAX_COIN, int128), _dx)
 
 
 @payable
@@ -413,7 +443,7 @@ def remove_liquidity_one_coin(
     # Withdraw a base pool coin
     coin_amount: uint256 = CurveMeta(_pool).remove_liquidity_one_coin(_burn_amount, MAX_COIN, 0)
 
-    BASE_POOL.remove_liquidity_one_coin(coin_amount, i - MAX_COIN, _min_amount)
+    BASE_POOL.remove_liquidity_one_coin(coin_amount, convert(i - MAX_COIN, int128), _min_amount)
 
     coin: address = BASE_COINS[i - MAX_COIN]
     return self._send(coin, _receiver, _use_eth, True)
@@ -433,4 +463,4 @@ def calc_withdraw_one_coin(_pool: address, _token_amount: uint256, i: uint256) -
         return CurveMeta(_pool).calc_withdraw_one_coin(_token_amount, i)
 
     _base_tokens: uint256 = CurveMeta(_pool).calc_withdraw_one_coin(_token_amount, MAX_COIN)
-    return BASE_POOL.calc_withdraw_one_coin(_base_tokens, i - MAX_COIN)
+    return BASE_POOL.calc_withdraw_one_coin(_base_tokens, convert(i - MAX_COIN, int128))

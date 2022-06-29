@@ -6,6 +6,7 @@ pytest_plugins = [
     "tests.fixtures.forked_coins",
     "tests.fixtures.functions",
     "tests.fixtures.tricrypto",
+    "tests.fixtures.tripool",
 ]
 
 INITIAL_PRICES = [int(0.8 * 10 ** 18)]  # 1/eur

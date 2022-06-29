@@ -61,4 +61,4 @@ def test_get_dy(
     calculated = zap.get_dy(meta_swap, i, j, dx)
     zap.exchange(meta_swap, i, j, dx, 0, {"from": bob})
 
-    assert underlying_coins[j].balanceOf(bob) - initial_amounts_underlying[j] == calculated
+    assert int(underlying_coins[j].balanceOf(bob) - initial_amounts_underlying[j]) == pytest.approx(calculated, abs=1)
