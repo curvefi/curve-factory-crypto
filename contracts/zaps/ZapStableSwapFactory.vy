@@ -210,7 +210,7 @@ def lp_price(_pool: address, _i: uint256 = 0) -> uint256:
     n_coins: uint256 = STABLE_FACTORY.get_n_coins(coin)
     vprice: uint256 = 10 ** 18
     if n_coins > 0:
-        vprice = CurveBase(_pool).get_virtual_price()
+        vprice = CurveBase(coin).get_virtual_price()
 
     # lp --p--> meta0
     if _i == 0:
@@ -626,7 +626,7 @@ def calc_token_amount(_pool: address, _amounts: uint256[POOL_N_COINS][META_N_COI
     meta_amounts: uint256[META_N_COINS] = empty(uint256[META_N_COINS])
     for i in range(META_N_COINS):
         meta_amounts[i] = _amounts[i][0]
-        for j in range(1, BASE_MAX_N_COINS):
+        for j in range(1, POOL_N_COINS):
             if _amounts[i][j] > 0:
                 meta_amounts[i] += self._calc_in_base(CurveMeta(_pool).coins(i), _amounts[i])
                 break
