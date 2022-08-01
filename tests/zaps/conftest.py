@@ -51,6 +51,8 @@ def initial_price(zap_base):
         return 10 ** (18 - 4)
     elif zap_base == "tricrypto":
         return int(LP_PRICE_USD // 10 ** 4 + 1)  # usd to eth, added 1 for errors
+    else:
+        return 10 ** 18
 
 
 @pytest.fixture(scope="module")
@@ -88,9 +90,12 @@ def meta_token(CurveTokenV5, meta_swap):
 
 
 @pytest.fixture(scope="module")
-def zap(ZapETH, ZapETHZap, Zap3PoolETH, zap_base, base_swap, base_token, weth, base_coins, accounts):
+def zap(ZapETH, ZapETHZap, Zap3PoolETH, ZapStableSwapFactoryOne, zap_base, base_swap, base_token, weth, base_coins, accounts):
     if zap_base == "3pool":
         contract = Zap3PoolETH
+    elif zap_base == "stable_factory":
+        # from tests.zaps.forked.conftest import _data
+        return ZapStableSwapFactoryOne.deploy(weth, "0xB9fC157394Af804a3578134A6585C0dc9cc990d4", {"from": accounts[0]})
     elif len(base_coins) == 3:
         contract = ZapETH
     else:
@@ -143,11 +148,18 @@ def base_swap(zap_base, tricrypto, tripool):
 
 
 @pytest.fixture(scope="module")
-def initial_prices_base(zap_base, tricrypto_initial_prices, tripool_initial_prices):
+def initial_prices_base(zap_base, tricrypto_initial_prices, tripool_initial_prices, base_swap, base_coins):
     if zap_base == "tricrypto":
         return tricrypto_initial_prices
     elif zap_base == "3pool":
         return tripool_initial_prices
+    else:
+        initial_prices = [10 ** 18]
+        for i, coin in zip(range(1, len(base_coins)), base_coins[1:]):
+            initial_prices.append(
+                base_swap.get_dy(i, 0, 10 ** coin.decimals()) * 10 ** (18 - base_coins[0].decimals())
+            )
+        return initial_prices
 
 
 @pytest.fixture(scope="module")
@@ -171,7 +183,7 @@ def initial_prices(zap_base, Tricrypto, is_forked, base_swap, meta_swap, initial
     if not is_forked:
         return [lp_price_usd * 10 ** 18 // initial_price, lp_price_usd + 1000]
 
-    if zap_base == "3pool":
+    if zap_base in ["3pool", "stable_factory"]:
         vp = base_swap.get_virtual_price()
         return [10 ** 36 // meta_swap.price_scale(), vp]
 

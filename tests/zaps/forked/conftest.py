@@ -80,6 +80,8 @@ def base_token(zap_base, base_token, is_forked, CurveTokenV2, CurveTokenV4):
         return CurveTokenV2.at(_data["token"])
     elif zap_base == "tricrypto":
         return CurveTokenV4.at(_data["token"])
+    else:
+        return Contract.from_explorer(_data["token"])
 
 
 @pytest.fixture(scope="module")
@@ -95,7 +97,7 @@ def initial_amount_usd(initial_amount_usd, is_forked):
     if not is_forked:
         return initial_amount_usd
     else:
-        return 1_000
+        return 10
 
 
 @pytest.fixture(scope="module")

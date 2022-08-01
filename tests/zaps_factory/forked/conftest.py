@@ -187,7 +187,7 @@ def default_amounts(all_coins, default_amount):
 
 @pytest.fixture(scope="module")
 def factory(factory, Factory):
-    yield Factory.at(_data["crypto_factory"])
+    yield Factory.at(_data["factory"])
 
 
 @pytest.fixture(scope="module")
