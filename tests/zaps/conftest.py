@@ -1,4 +1,5 @@
 import pytest
+from brownie import ZERO_ADDRESS
 
 from tests.fixtures.tricrypto import LP_PRICE_USD
 
@@ -157,20 +158,20 @@ def initial_prices_base(zap_base, tricrypto_initial_prices, tripool_initial_pric
         initial_prices = [10 ** 18]
         for i, coin in zip(range(1, len(base_coins)), base_coins[1:]):
             initial_prices.append(
-                base_swap.get_dy(i, 0, 10 ** coin.decimals()) * 10 ** (18 - base_coins[0].decimals())
+                base_swap.get_dy(i, 0, 10 ** coin.decimals()) * 10 ** (18 - base_coins[0].decimals()) if coin != ZERO_ADDRESS else 0
             )
         return initial_prices
 
 
 @pytest.fixture(scope="module")
 def initial_amounts_base(base_coins, initial_amount_usd, initial_prices_base):
-    usd_cnt = len(base_coins) - 2
+    usd_cnt = len([c for c in base_coins if c != ZERO_ADDRESS]) - 2
     amounts = [
         initial_amount_usd * 10 ** (18 + coin.decimals()) // (usd_cnt * price)
         for price, coin in zip(initial_prices_base[:usd_cnt], base_coins[:usd_cnt])
     ]
     return amounts + [
-        initial_amount_usd * 10 ** (18 + coin.decimals()) // price
+        initial_amount_usd * 10 ** (18 + coin.decimals()) // price if price > 0 else 0
         for price, coin in zip(initial_prices_base[usd_cnt:], base_coins[usd_cnt:])
     ]
 
