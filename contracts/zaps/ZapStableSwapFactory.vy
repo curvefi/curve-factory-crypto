@@ -532,7 +532,7 @@ def _add_to_base(_pool: address, _amounts: uint256[POOL_N_COINS], _use_eth: bool
     n_coins: uint256 = BASE_MAX_N_COINS
     for i in range(BASE_MAX_N_COINS):
         coin: address = base_coins[i]
-        if coin == ZERO_ADDRESS:
+        if coin == empty(address):
             n_coins = i
             break
         eth_amount += self._receive(coin, _amounts[1 + i], _use_eth, True)
@@ -652,7 +652,7 @@ def _remove_from_base(_pool: address, _min_amounts: uint256[POOL_N_COINS], _use_
     base_coins: address[BASE_MAX_N_COINS] = STABLE_FACTORY.get_coins(_pool)
     n_coins: uint256 = BASE_MAX_N_COINS
     for i in range(BASE_MAX_N_COINS):
-        if base_coins[i] == ZERO_ADDRESS:
+        if base_coins[i] == empty(address):
             n_coins = i
             break
         if self._need_to_handle_eth(_use_eth, base_coins[i]):  # Need to wrap ETH
@@ -680,7 +680,7 @@ def _remove_from_base(_pool: address, _min_amounts: uint256[POOL_N_COINS], _use_
 
     if receiver == self:
         for coin in base_coins:
-            if coin == ZERO_ADDRESS:
+            if coin == empty(address):
                 break
             self._send(coin, _receiver, _use_eth)
     return returned
