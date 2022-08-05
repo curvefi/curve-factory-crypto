@@ -1,0 +1,28 @@
+{
+  "swap": "0x3CFAa1596777CAD9f5004F9a0c443d912E262243",
+  "token": "0x3CFAa1596777CAD9f5004F9a0c443d912E262243",
+  "coins": [
+    "0x68037790A0229e9Ce6EaA8A99ea92964106C4703",
+    "0xC581b735A1688071A1746c968e0798D642EDE491",
+    "0xdB25f211AB05b1c97D595516F45794528a807ad8",
+    "0xD71eCFF9342A5Ced620049e616c5035F1dB98620"
+  ],
+  "weth_idx": 0,
+  "weth": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "base_pool": {
+    "2": {
+      "eth": "",
+      "no_eth": ""
+    },
+    "3": {
+      "eth": "",
+      "no_eth": ""
+    },
+    "4": {
+      "eth": "",
+      "no_eth": ""
+    }
+  },
+  "factory": "0xF18056Bbd320E96A48e3Fbf8bC061322531aac99",
+  "stable_factory": "0xB9fC157394Af804a3578134A6585C0dc9cc990d4"
+}

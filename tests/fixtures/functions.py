@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
 import pytest
-from brownie import ETH_ADDRESS
+from brownie import ETH_ADDRESS, ZERO_ADDRESS
 
 MAX_UINT = 2 ** 256 - 1
 
@@ -12,6 +12,8 @@ def mint_alice_underlying(
 ):
     base_token.approve(meta_swap, MAX_UINT, {"from": alice})
     for coin, amount in zip(underlying_coins, initial_amounts_underlying):
+        if coin == ZERO_ADDRESS:
+            continue
         coin._mint_for_testing(alice, amount, {"from": alice})
         coin.approve(base_swap, MAX_UINT, {"from": alice})
         coin.approve(meta_swap, MAX_UINT, {"from": alice})
@@ -23,6 +25,8 @@ def mint_bob_underlying(
 ):
     base_token.approve(meta_swap, MAX_UINT, {"from": bob})
     for coin, amount in zip(underlying_coins, initial_amounts_underlying):
+        if coin == ZERO_ADDRESS:
+            continue
         coin._mint_for_testing(bob, amount, {"from": bob})
         coin.approve(base_swap, MAX_UINT, {"from": bob})
         coin.approve(meta_swap, MAX_UINT, {"from": bob})
@@ -40,7 +44,7 @@ def add_initial_liquidity(
     is_forked,
 ):
     base_swap.add_liquidity(
-        initial_amounts_underlying[len(initial_amounts) - 1:], 0, {"from": alice}
+        [amount for amount in initial_amounts_underlying[len(initial_amounts) - 1:] if amount > 0], 0, {"from": alice}
     )
     if is_forked:  # Sometimes calculations fail
         assert int(base_token.balanceOf(alice)) == pytest.approx(
@@ -69,6 +73,7 @@ def get_dy(underlying_coins, underlying_prices):
 def balances_do_not_change():
     @contextmanager
     def inner(tokens, acc):
+        tokens = [token for token in tokens if token != ZERO_ADDRESS]
         initial_amounts = [
             acc.balance() if token == ETH_ADDRESS else token.balanceOf(acc) for token in tokens
         ]
@@ -89,6 +94,8 @@ def zap_has_zero_amounts(meta_token, base_token, underlying_coins, zap):
     def check():
         assert zap.balance() == 0
         for token in [meta_token, base_token] + underlying_coins:
+            if token == ZERO_ADDRESS:
+                continue
             assert token.balanceOf(zap) == 0
 
     yield check

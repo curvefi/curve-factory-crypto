@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from brownie import Contract, interface
+from brownie import Contract, interface, ZERO_ADDRESS
 from brownie.project.main import get_loaded_projects
 
 _data = {}
@@ -23,7 +23,8 @@ def pytest_generate_tests(metafunc):
             _data = json.load(f)
         metafunc.parametrize(["zap_base", "weth_idx"], [(zap_base, _data["weth_idx"])], indirect=True, scope="session")
     if "mintable_fork_token" in metafunc.fixturenames:
-        metafunc.parametrize("mintable_fork_token", [deployed_data], indirect=True, scope="session")
+        network_name = deployed_data.split('-')[0]
+        metafunc.parametrize("mintable_fork_token", [network_name], indirect=True, scope="session")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -55,7 +56,7 @@ def base_coins(base_coins, mintable_fork_token, is_forked):
     if not is_forked:
         yield base_coins
     else:
-        yield [mintable_fork_token(addr) for addr in _data["coins"]]
+        yield [mintable_fork_token(addr) if addr != ZERO_ADDRESS else addr for addr in _data["coins"]]
 
 
 @pytest.fixture(scope="module")
@@ -70,6 +71,8 @@ def base_swap(zap_base, Tricrypto, StableSwap3Pool, base_swap, base_coins, is_fo
             if len(base_coins) == 3
             else Contract.from_abi("TricryptoZap", _data["swap"], interface.TricryptoZap.abi)
         )
+    else:
+        return Contract.from_explorer(_data["swap"])
 
 
 @pytest.fixture(scope="module")
@@ -80,6 +83,8 @@ def base_token(zap_base, base_token, is_forked, CurveTokenV2, CurveTokenV4):
         return CurveTokenV2.at(_data["token"])
     elif zap_base == "tricrypto":
         return CurveTokenV4.at(_data["token"])
+    else:
+        return Contract.from_explorer(_data["token"])
 
 
 @pytest.fixture(scope="module")
@@ -95,13 +100,13 @@ def initial_amount_usd(initial_amount_usd, is_forked):
     if not is_forked:
         return initial_amount_usd
     else:
-        return 1_000
+        return 10
 
 
 @pytest.fixture(scope="module")
 def amounts_underlying(underlying_coins):
     """Small amounts"""
-    return [10 ** coin.decimals() for coin in underlying_coins]
+    return [10 ** coin.decimals() if coin != ZERO_ADDRESS else 0 for coin in underlying_coins]
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -112,6 +117,8 @@ def pre_mining(
     meta_token.approve(zap, 2 ** 256 - 1, {"from": alice})
     base_token.approve(zap, 2 ** 256 - 1, {"from": alice})
     for coin, amount in zip(underlying_coins, amounts_underlying):
+        if coin == ZERO_ADDRESS:
+            break
         coin._mint_for_testing(alice, amount, {"from": alice})
         coin.approve(zap, 2 ** 256 - 1, {"from": alice})
 

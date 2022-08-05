@@ -1,4 +1,4 @@
-from brownie import ETH_ADDRESS
+from brownie import ETH_ADDRESS, ZERO_ADDRESS
 
 
 def test_remove_liquidity(
@@ -33,7 +33,10 @@ def test_remove_liquidity(
     zap_has_zero_amounts()
 
     for coin, amount in zip(underlying_coins, amounts_received):
-        assert coin.balanceOf(bob) == amount > 0
+        if coin == ZERO_ADDRESS:
+            assert amount == 0
+        else:
+            assert coin.balanceOf(bob) == amount > 0
     assert bob.balance() - initial_balance == 0
 
 
@@ -70,7 +73,9 @@ def test_remove_liquidity_use_eth(
     zap_has_zero_amounts()
 
     for i, (coin, amount) in enumerate(zip(underlying_coins, amounts_received)):
-        if i == weth_idx:
+        if coin == ZERO_ADDRESS:
+            assert amount == 0
+        elif i == weth_idx:
             assert coin.balanceOf(bob) == 0
         else:
             assert coin.balanceOf(bob) == amount > 0
