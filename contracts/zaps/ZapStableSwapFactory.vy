@@ -562,7 +562,8 @@ def add_liquidity(
 ) -> uint256:
     """
     @notice Deposit tokens to base and meta pools
-    @dev Providing ETH with _use_eth=True will result in ETH remained in zap. It can be recovered via removing liquidity.
+    @dev Providing ETH with _use_eth=True and no ETH actually used will result in ETH remained in zap.
+         It can be recovered via removing liquidity.
     @param _pool Address of the metapool to deposit into
     @param _deposit_amounts List of amounts of underlying coins to deposit
     @param _min_mint_amount Minimum amount of LP tokens to mint from the deposit

@@ -4,7 +4,7 @@
 @license MIT
 @author Curve.Fi
 @notice Zap for StableSwap Factory metapools created via CryptoSwap Factory.
-        Coins are set as [meta0, meta1, base0, base1, ...],
+        Coins are set as [meta0, base0, base1, ...],
         where meta is coin that is used in CryptoSwap(LP token for base pools) and
         base is base pool coins or ZERO_ADDRESS when there is no such coins.
 @dev Does not work if 2 ETH used in pools, e.g. (ETH, Plain2ETH)
@@ -114,14 +114,13 @@ def get_coins(_pool: address) -> address[ALL_N_COINS]:
     coins: address[ALL_N_COINS] = empty(address[ALL_N_COINS])
     coins[0] = CurveMeta(_pool).coins(0)
 
-    coins[1] = CurveMeta(_pool).coins(1)
+    coins[META_INDEX] = CurveMeta(_pool).coins(META_INDEX)
 
     # Set base coins
     # If meta coin is not LP Token, `get_coins()` will return [ZERO_ADDRESS] * 4
-    base_coins: address[BASE_MAX_N_COINS] = STABLE_FACTORY.get_coins(coins[1])
+    base_coins: address[BASE_MAX_N_COINS] = STABLE_FACTORY.get_coins(coins[META_INDEX])
     for i in range(BASE_MAX_N_COINS):
-        if base_coins[i] == ZERO_ADDRESS:
-            coins[1 + i] = base_coins[i]
+        coins[META_INDEX + i] = base_coins[i]
 
     return coins
 
@@ -135,11 +134,11 @@ def coins(_pool: address, _i: uint256) -> address:
     @param _i Index of the coin
     @return Address of `_i` coin used in zap
     """
-    if _i == 0:
-        return CurveMeta(_pool).coins(0)
+    if _i < META_INDEX:
+        return CurveMeta(_pool).coins(_i)
 
-    coin: address = CurveMeta(_pool).coins(1)
-    return CurveBase(coin).coins(_i - 1)
+    coin: address = CurveMeta(_pool).coins(META_INDEX)
+    return CurveBase(coin).coins(_i - META_INDEX)
 
 
 @internal
@@ -351,7 +350,7 @@ def _add_to_base_one(_pool: address, _amount: uint256, _min_lp: uint256, _i: uin
 @payable
 def exchange(_pool: address, i: uint256, j: uint256, _dx: uint256, _min_dy: uint256, _use_eth: bool = False, _receiver: address = msg.sender) -> uint256:
     """
-    @notice Exchange using wETH by default. Indexing = [0, 1, ...]
+    @notice Exchange using wETH by default
     @dev Index values can be found via the `coins` public getter method
     @param _pool Address of the pool for the exchange
     @param i Index value for the coin to send
@@ -450,7 +449,7 @@ def _calc_in_base_one(_pool: address, _amount: uint256, _i: uint256) -> uint256:
 @view
 def get_dy(_pool: address, i: uint256, j: uint256, _dx: uint256) -> uint256:
     """
-    @notice Calculate the amount received in exchange. Indexing = [[0, 1, ...], [5, ..., 9]]
+    @notice Calculate the amount received in exchange
     @dev Index values can be found via the `coins` public getter method
     @param _pool Address of the pool for the exchange
     @param i Index value for the coin to send
@@ -530,7 +529,8 @@ def add_liquidity(
 ) -> uint256:
     """
     @notice Deposit tokens to base and meta pools
-    @dev Providing ETH with _use_eth=True will result in ETH remained in zap. It can be recovered via removing liquidity.
+    @dev Providing ETH with _use_eth=True and no ETH actually used will result in ETH remained in zap.
+         It can be recovered via removing liquidity.
     @param _pool Address of the metapool to deposit into
     @param _deposit_amounts List of amounts of underlying coins to deposit
     @param _min_mint_amount Minimum amount of LP tokens to mint from the deposit
@@ -664,11 +664,11 @@ def remove_liquidity(
     _receiver: address = msg.sender,
 ) -> uint256[ALL_N_COINS]:
     """
-    @notice Withdraw and unwrap coins from the pool.
+    @notice Withdraw and unwrap coins from the pool
     @dev Withdrawal amounts are based on current deposit ratios
     @param _pool Address of the pool to withdraw from
     @param _burn_amount Quantity of LP tokens to burn in the withdrawal
-    @param _min_amounts Minimum amounts of underlying coins to receive.
+    @param _min_amounts Minimum amounts of underlying coins to receive
     @param _use_eth Use raw ETH
     @param _receiver Address that receives the LP tokens
     @return List of amounts of underlying coins that were withdrawn
@@ -711,7 +711,7 @@ def remove_liquidity_one_coin(
     token: address = CurveMeta(_pool).token()
     ERC20(token).transferFrom(msg.sender, self, _burn_amount)
 
-    pool_i: uint256 = min(i, 1)
+    pool_i: uint256 = min(i, META_INDEX)
 
     if pool_i != META_INDEX:
         return CurveMeta(_pool).remove_liquidity_one_coin(_burn_amount, pool_i, _min_amount, _use_eth, _receiver)
@@ -741,6 +741,6 @@ def calc_withdraw_one_coin(_pool: address, _token_amount: uint256, i: uint256) -
     amount: uint256 = CurveMeta(_pool).calc_withdraw_one_coin(_token_amount, pool_i)
     if pool_i == META_INDEX:
         pool: address = CurveMeta(_pool).coins(pool_i)
-        adjusted_i: int128 = convert(i % ALL_N_COINS - 1, int128)
+        adjusted_i: int128 = convert(i - META_INDEX, int128)
         return CurveBase(pool).calc_withdraw_one_coin(amount, adjusted_i)
     return amount
