@@ -1,4 +1,4 @@
-# @version 0.3.3
+# @version 0.3.4
 """
 @title Zap for Curve Factory
 @license MIT
@@ -310,7 +310,7 @@ def _send(_coin: address, _to: address, _use_eth: bool) -> uint256:
 @internal
 def _approve(_coin: address, _pool: address):
     if _coin != ETH_ADDRESS and not self.is_approved[_coin][_pool]:
-        ERC20(_coin).approve(_pool, MAX_UINT256)
+        ERC20(_coin).approve(_pool, max_value(uint256))
         self.is_approved[_coin][_pool] = True
 
 
