@@ -1,4 +1,4 @@
-# @version 0.3.1
+# @version 0.3.9
 # (c) Curve.Fi, 2021
 # Pool for two crypto assets
 
@@ -100,7 +100,7 @@ MAX_A: constant(uint256) = N_COINS**N_COINS * A_MULTIPLIER * 100000
 
 EXP_PRECISION: constant(uint256) = 10**10
 
-N_COINS: constant(int128) = 2
+N_COINS: constant(uint256) = 2
 PRECISION: constant(uint256) = 10 ** 18  # The precision to convert to
 A_MULTIPLIER: constant(uint256) = 10000
 
