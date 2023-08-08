@@ -168,12 +168,6 @@ def __init__(_weth: address):
     self.mid_fee = 22022022
 
 
-@payable
-@external
-def __default__():
-    pass
-
-
 # Internal Functions
 
 @internal
@@ -853,7 +847,6 @@ def sqrt_int(x: uint256) -> uint256:
 # External Functions
 
 
-@payable
 @external
 @nonreentrant('lock')
 def exchange(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
@@ -861,10 +854,10 @@ def exchange(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
     """
     Exchange using WETH by default
     """
-    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, use_eth, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
+    # return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, use_eth, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
+    return self._exchange(msg.sender, 0, i, j, dx, min_dy, use_eth, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
 
 
-@payable
 @external
 @nonreentrant('lock')
 def exchange_underlying(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
@@ -872,19 +865,19 @@ def exchange_underlying(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
     """
     Exchange using ETH
     """
-    return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, True, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
+    # return self._exchange(msg.sender, msg.value, i, j, dx, min_dy, True, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
+    return self._exchange(msg.sender, 0, i, j, dx, min_dy, True, receiver, ZERO_ADDRESS, EMPTY_BYTES32)
 
 
-@payable
 @external
 @nonreentrant('lock')
 def exchange_extended(i: uint256, j: uint256, dx: uint256, min_dy: uint256,
                       use_eth: bool, sender: address, receiver: address, cb: bytes32) -> uint256:
     assert cb != EMPTY_BYTES32  # dev: No callback specified
-    return self._exchange(sender, msg.value, i, j, dx, min_dy, use_eth, receiver, msg.sender, cb)
+    # return self._exchange(sender, msg.value, i, j, dx, min_dy, use_eth, receiver, msg.sender, cb)
+    return self._exchange(sender, 0, i, j, dx, min_dy, use_eth, receiver, msg.sender, cb)
 
 
-@payable
 @external
 @nonreentrant('lock')
 def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
@@ -915,12 +908,14 @@ def add_liquidity(amounts: uint256[N_COINS], min_mint_amount: uint256,
     xp_old = [xp_old[0] * precisions[0], xp_old[1] * price_scale / PRECISION]
 
     if not use_eth:
-        assert msg.value == 0  # dev: nonzero eth amount
+        # assert msg.value == 0  # dev: nonzero eth amount
+        pass
 
     for i in range(N_COINS):
         coin: address = self.coins[i]
         if use_eth and coin == WETH20:
-            assert msg.value == amounts[i]  # dev: incorrect eth amount
+            # assert msg.value == amounts[i]  # dev: incorrect eth amount
+            pass
         if amounts[i] > 0:
             if (not use_eth) or (coin != WETH20):
                 response: Bytes[32] = raw_call(
